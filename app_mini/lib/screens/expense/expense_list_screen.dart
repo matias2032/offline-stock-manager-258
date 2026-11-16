@@ -83,6 +83,12 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
     }
   }
 
+  void _showStockExpenseLocked() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context)!.stockExpenseLockedMessage)),
+    );
+  }
+
   Future<void> _openForm({ExpenseModel? expense}) async {
     await Navigator.push(
       context,
@@ -131,17 +137,28 @@ class _ExpenseListScreenState extends State<ExpenseListScreen> {
                     itemCount: expenseProvider.expenses.length,
                     itemBuilder: (context, index) {
                       final expense = expenseProvider.expenses[index];
+                      final isStock =
+                          expenseProvider.isStockExpense(expense.idExpense!);
                       return ListTile(
+                        leading: isStock
+                            ? const Icon(Icons.inventory_2_outlined)
+                            : null,
                         title: Text(expense.description),
                         subtitle: Text(
                           '${_supplierName(context, expense.supplierId)} · '
-                          '${dateFormat.format(expense.expenseDate)}',
+                          '${dateFormat.format(expense.expenseDate)}'
+                          '${isStock ? ' · ${l10n.stockPurchaseTag}' : ''}',
                         ),
                         trailing: Text(
                           currencyFormat.format(expense.amountCents / 100),
                         ),
-                        onTap: () => _openForm(expense: expense),
-                        onLongPress: () => _confirmDelete(expense),
+                        // Stock purchase expenses are read-only (also enforced in the repository).
+                        onTap: isStock
+                            ? _showStockExpenseLocked
+                            : () => _openForm(expense: expense),
+                        onLongPress: isStock
+                            ? _showStockExpenseLocked
+                            : () => _confirmDelete(expense),
                       );
                     },
                   ),

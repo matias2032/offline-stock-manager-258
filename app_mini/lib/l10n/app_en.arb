@@ -409,5 +409,107 @@
   "revenueMixTitle": "Revenue mix",
   "immediateRevenueLabel": "Immediate revenue",
   "revenueTrendTitle": "Revenue over time",
-  "peakLabel": "Peak"
+  "peakLabel": "Peak",
+
+  "catalogTitle": "Catalog",
+  "newCatalogItem": "New item",
+  "editCatalogItem": "Edit item",
+  "createCatalogItem": "Create item",
+  "noCatalogItemsYet": "No products or services registered yet.",
+  "deleteCatalogItem": "Delete item",
+  "confirmDeleteCatalogItemMessage": "Are you sure you want to delete \"{name}\"? Past sales keep their history.",
+  "@confirmDeleteCatalogItemMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "searchLabel": "Search",
+  "productLabel": "Product",
+  "serviceLabel": "Service",
+  "itemNameLabel": "Name",
+  "itemCodeLabel": "Code (optional)",
+  "categoryLabel": "Category",
+  "noCategoryLabel": "No category",
+  "unitLabel": "Unit",
+  "salePriceLabel": "Sale price",
+  "costPriceLabel": "Cost price",
+  "costPriceHelperText": "Reference cost. Updated automatically when you register a purchase.",
+  "trackStockLabel": "Track stock",
+  "trackStockHelperText": "Quantity goes down with each sale and up with each purchase.",
+  "minStockLabel": "Minimum stock (alert)",
+  "activeLabel": "Active",
+  "inactiveLabel": "Inactive",
+  "newCategory": "New category",
+  "renameCategory": "Rename category",
+  "categoryNameLabel": "Category name",
+  "deleteCategory": "Delete category",
+  "confirmDeleteCategoryMessage": "Delete \"{name}\"? Items in this category will be kept, just without a category.",
+  "@confirmDeleteCategoryMessage": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "noCategoriesYet": "No categories yet.",
+
+  "stockTitle": "Stock",
+  "lowStockFilterLabel": "Below minimum ({count})",
+  "@lowStockFilterLabel": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "belowMinimumLabel": "Below minimum",
+  "stockMinLabel": "Min: {min}",
+  "@stockMinLabel": {
+    "placeholders": { "min": { "type": "String" } }
+  },
+  "noStockItemsYet": "No stock-tracked products yet. Turn on \"Track stock\" on a product in the catalog.",
+  "noInitialStockLabel": "No initial stock",
+  "deletedLabel": "Deleted",
+  "stockHistoryTitle": "Stock history",
+  "noMovementsYet": "No movements yet.",
+  "stockPurchaseButton": "Register purchase",
+  "stockPurchaseTitle": "Stock purchase",
+  "initialStockButton": "Set initial stock",
+  "adjustStockButton": "Adjust stock",
+  "quantityLabel": "Quantity",
+  "unitCostLabel": "Unit cost",
+  "unitCostOptionalLabel": "Unit cost (optional)",
+  "purchaseTotalLabel": "Total: {amount}",
+  "@purchaseTotalLabel": {
+    "placeholders": { "amount": { "type": "String" } }
+  },
+  "enterValidQuantityMessage": "Enter a valid quantity",
+  "noteRequiredMessage": "A note is required for this movement",
+  "movementTypeLabel": "Movement type",
+  "stockMovementSaved": "Movement registered.",
+  "stockPurchaseExpenseDescription": "Stock purchase: {quantity} × {name}",
+  "@stockPurchaseExpenseDescription": {
+    "placeholders": {
+      "quantity": { "type": "String" },
+      "name": { "type": "String" }
+    }
+  },
+  "stockPurchaseTag": "Stock purchase",
+  "stockExpenseLockedMessage": "This expense comes from a stock purchase and cannot be edited or deleted.",
+  "movementInitial": "Initial stock",
+  "movementPurchase": "Purchase",
+  "movementSale": "Sale",
+  "movementSaleReversal": "Sale reversal",
+  "movementAdjustmentIn": "Adjustment (in)",
+  "movementAdjustmentOut": "Adjustment (out)",
+  "movementLoss": "Loss",
+
+  "saleItemsTitle": "Items",
+  "addItemButton": "Add item",
+  "selectItemTitle": "Select item",
+  "removeItemTooltip": "Remove item",
+  "unitPriceLabel": "Unit price",
+  "lineSubtotalLabel": "Subtotal: {amount}",
+  "@lineSubtotalLabel": {
+    "placeholders": { "amount": { "type": "String" } }
+  },
+  "stockAvailableLabel": "In stock: {quantity} {unit}",
+  "@stockAvailableLabel": {
+    "placeholders": {
+      "quantity": { "type": "String" },
+      "unit": { "type": "String" }
+    }
+  },
+  "outOfStockLabel": "Out of stock",
+  "noSellableItemsYet": "No active products or services in the catalog yet."
 }

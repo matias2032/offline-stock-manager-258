@@ -69,6 +69,7 @@ class _AppSidebarState extends State<AppSidebar>
 // Structural map (groupKey -> item routes) to determine active group expansion.
   static const Map<String, List<String>> _groupRoutes = {
     'sales': ['/sale/new', '/sale', '/credit-sale'],
+    'catalog': ['/catalog', '/stock'],
     'customers': ['/customer'],
     'suppliers': ['/supplier'],
     'expenses': ['/expense'],
@@ -94,6 +95,23 @@ class _AppSidebarState extends State<AppSidebar>
               icon: Icons.credit_score_outlined,
               title: loc.creditSalesTitle,
               route: '/credit-sale',
+            ),
+          ],
+        ),
+        _MenuGroup(
+          icon: Icons.inventory_2_outlined,
+          title: loc.catalogTitle,
+          groupKey: 'catalog',
+          items: [
+            _MenuItem(
+              icon: Icons.inventory_2_outlined,
+              title: loc.catalogTitle,
+              route: '/catalog',
+            ),
+            _MenuItem(
+              icon: Icons.inventory_outlined,
+              title: loc.stockTitle,
+              route: '/stock',
             ),
           ],
         ),

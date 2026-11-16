@@ -7,56 +7,10 @@ import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
-import 'core/database/local_database.dart';
-import 'daos/user_dao.dart';
-import 'repositories/user_repository.dart';
-import 'providers/user_provider.dart';
-import 'daos/business_unit_dao.dart';
-import 'repositories/business_unit_repository.dart';
-import 'providers/business_unit_provider.dart';
-import 'daos/customer_dao.dart';
-import 'repositories/customer_repository.dart';
-import 'providers/customer_provider.dart';
-import 'screens/user/onboarding_screen.dart';
-import 'screens/user/welcome_screen.dart';
-import 'screens/user/activation_screen.dart';
-import 'screens/user/login_screen.dart';
-import 'screens/dashboard/dashboard_screen.dart';
-import 'screens/customer/customer_list_screen.dart';
-import 'daos/supplier_dao.dart';
-import 'repositories/supplier_repository.dart';
-import 'providers/supplier_provider.dart';
-import 'screens/supplier/supplier_list_screen.dart';
-import 'daos/sale_dao.dart';
-import 'repositories/sale_repository.dart';
-import 'providers/sale_provider.dart';
-import 'daos/financial_statement_dao.dart';
-import 'repositories/financial_statement_repository.dart';
-import 'providers/financial_statement_provider.dart';
-import 'daos/expense_dao.dart';
-import 'repositories/expense_repository.dart';
-import 'providers/expense_provider.dart';
-import 'screens/expense/expense_list_screen.dart';
-import 'screens/sale/sale_list_screen.dart';
-import 'screens/sale/sale_form_screen.dart';
-import 'screens/sale/credit_sale_list_screen.dart';
-import 'screens/sale/financial_statement_list_screen.dart';
-import 'screens/sale/financial_statement_generate_screen.dart';
-import 'screens/sale/financial_statement_detail_screen.dart';
-import 'screens/user/edit_profile_screen.dart';
-import 'screens/user/change_password_screen.dart';
-import 'screens/business_unit/business_unit_management_screen.dart';
-import 'screens/settings/backup_screen.dart';
-import 'theme/app_theme.dart';
-import 'providers/theme_provider.dart';
-import 'providers/locale_provider.dart';
-import 'package:mini/l10n/app_localizations.dart';
-import 'screens/splash/splash_screen.dart';
-import 'providers/dashboard_provider.dart';
-
+import 'app_imports.dart';
 
 // Debug switch: set to true to wipe local database on every startup.
-const bool _debugResetDatabaseOnStart = false;
+const bool _debugResetDatabaseOnStart = true;
 
 // Single instance: MaterialApp can rebuild (theme/locale) without re-attaching a new observer.
 final _resumeRouteObserver = ResumeRouteObserver();
@@ -94,7 +48,8 @@ class MyApp extends StatelessWidget {
     final localDatabase = LocalDatabase.instance;
     final userDao = UserDao(localDatabase);
 
-// Repositories and DAOs initialization
+// Repositories and DAOs initialization.
+// Order matters: a DAO/repository must be created before whoever uses it.
     final businessUnitDao = BusinessUnitDao();
     final businessUnitRepository = BusinessUnitRepository(dao: businessUnitDao);
     final userRepository = UserRepository(localDatabase, userDao, businessUnitRepository);
@@ -108,8 +63,21 @@ class MyApp extends StatelessWidget {
     final expenseDao = ExpenseDao(localDatabase);
     final expenseRepository = ExpenseRepository(localDatabase, expenseDao);
 
+    // Catalog and stock DAOs come before the sale repository, which uses them.
+    final itemCategoryDao = ItemCategoryDao(localDatabase);
+    final catalogItemDao = CatalogItemDao(localDatabase);
+    final stockMovementDao = StockMovementDao(localDatabase);
+
     final saleDao = SaleDao(localDatabase);
-    final saleRepository = SaleRepository(localDatabase, saleDao, businessUnitDao);
+    final saleItemDao = SaleItemDao(localDatabase);
+    final saleRepository = SaleRepository(
+      localDatabase,
+      saleDao,
+      businessUnitDao,
+      saleItemDao,
+      catalogItemDao,
+      stockMovementDao,
+    );
 
     final financialStatementDao = FinancialStatementDao(localDatabase);
     final financialStatementRepository = FinancialStatementRepository(
@@ -118,6 +86,20 @@ class MyApp extends StatelessWidget {
       businessUnitDao,
     );
 
+    final catalogRepository = CatalogRepository(
+      localDatabase,
+      itemCategoryDao,
+      catalogItemDao,
+      stockMovementDao,
+    );
+
+    final stockRepository = StockRepository(
+      localDatabase,
+      stockMovementDao,
+      catalogItemDao,
+      supplierDao,
+      expenseRepository,
+    );
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
@@ -174,6 +156,20 @@ ChangeNotifierProvider(create: (_) => UserProvider(userRepository)),
           ),
           update: (_, __, previous) => previous!,
         ),
+        ChangeNotifierProxyProvider<BusinessUnitProvider, CatalogProvider>(
+          create: (context) => CatalogProvider(
+            catalogRepository,
+            context.read<BusinessUnitProvider>(),
+          ),
+          update: (_, __, previous) => previous!,
+        ),
+        ChangeNotifierProxyProvider<BusinessUnitProvider, StockProvider>(
+          create: (context) => StockProvider(
+            stockRepository,
+            context.read<BusinessUnitProvider>(),
+          ),
+          update: (_, __, previous) => previous!,
+        ),
       ],
       child: Consumer2<ThemeProvider, LocaleProvider>(
         builder: (context, themeProvider, localeProvider, _) => MaterialApp(
@@ -198,6 +194,9 @@ ChangeNotifierProvider(create: (_) => UserProvider(userRepository)),
             '/sale': (_) => const SaleListScreen(),
             '/sale/new': (_) => const SaleFormScreen(),
             '/credit-sale': (_) => const CreditSaleListScreen(),
+            '/catalog': (_) => const CatalogListScreen(),
+            '/catalog/categories': (_) => const ItemCategoryScreen(),
+            '/stock': (_) => const StockListScreen(),
             '/sale/financial-statement': (_) => const FinancialStatementListScreen(),
             '/sale/financial-statement/generate': (_) =>
                 const FinancialStatementGenerateScreen(),

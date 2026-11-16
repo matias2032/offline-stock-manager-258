@@ -1,22 +1,46 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../core/database/local_database.dart';
+import '../core/quantity_utils.dart';
 import '../daos/business_unit_dao.dart';
+import '../daos/catalog_item_dao.dart';
 import '../daos/sale_dao.dart';
+import '../daos/sale_item_dao.dart';
+import '../daos/stock_movement_dao.dart';
+import '../models/catalog_item_model.dart';
+import '../models/sale_item_model.dart';
 import '../models/sale_model.dart';
+import '../models/stock_movement_model.dart';
 import '../models/daily_revenue_point.dart';
 
-/* Business logic for the `sale` module: sale, sale_installment and sale_payment. This is the only entry point the UI/providers should
-use — never SaleDao directly.*/
+/* Business logic for the `sale` module: sale, sale_item, sale_installment and
+sale_payment, plus the stock side effects of selling catalog items. This is
+the only entry point the UI/providers should use — never the DAOs directly.
+
+Stock rules (see createSaleWithItems / cancelSale):
+ - stock goes down when the sale is created (there is no OPEN step);
+ - selling above the balance of a tracked item is blocked;
+ - cancelling a sale writes SALE_REVERSAL movements, once only. */
 class SaleRepository {
-  SaleRepository(this._database, this._saleDao, this._businessUnitDao);
+  SaleRepository(
+    this._database,
+    this._saleDao,
+    this._businessUnitDao,
+    this._saleItemDao,
+    this._catalogItemDao,
+    this._stockMovementDao,
+  );
 
   final LocalDatabase _database;
   final SaleDao _saleDao;
   final BusinessUnitDao _businessUnitDao;
+  final SaleItemDao _saleItemDao;
+  final CatalogItemDao _catalogItemDao;
+  final StockMovementDao _stockMovementDao;
 
   // sale
 
+  /* Free sale: manual description and total, no lines, no stock movement. */
   Future<SaleModel> createSale({
     required int businessUnitId,
     required String description,
@@ -34,81 +58,183 @@ class SaleRepository {
     String initialPaymentMethod = 'CASH',
   }) async {
     final trimmedDescription = description.trim();
-    if (trimmedDescription.isEmpty) {
-      throw ArgumentError('Sale description cannot be empty.');
-    }
-    if (totalAmountCents <= 0) {
-      throw ArgumentError('Sale total must be greater than zero.');
-    }
+    _validateSaleInput(
+      description: trimmedDescription,
+      totalAmountCents: totalAmountCents,
+      saleType: saleType,
+      customerId: customerId,
+      walkInCustomerName: walkInCustomerName,
+      initialPaymentCents: initialPaymentCents,
+    );
 
-    final isCredit = saleType == 'CREDIT';
-
-    if (isCredit) {
-      final hasCustomer = customerId != null;
-      final hasWalkIn =
-          walkInCustomerName != null && walkInCustomerName.trim().isNotEmpty;
-      if (!hasCustomer && !hasWalkIn) {
-        throw ArgumentError(
-          'A CREDIT sale needs either a customer or a walk-in customer name.',
-        );
-      }
-    }
-
-    if (initialPaymentCents != null) {
-      if (!isCredit) {
-        throw ArgumentError('Only CREDIT sales accept an initial payment.');
-      }
-      if (initialPaymentCents <= 0) {
-        throw ArgumentError('Initial payment must be greater than zero.');
-      }
-      if (initialPaymentCents > totalAmountCents) {
-        throw ArgumentError('Initial payment cannot exceed the sale total.');
-      }
-    }
-
-    return _database.runInTransaction((txn) async {
-      final reference = await _generateSaleReference(txn);
-
-      final sale = SaleModel(
-        reference: reference,
+    return _database.runInTransaction((txn) {
+      return _insertSaleInTxn(
+        txn,
+        businessUnitId: businessUnitId,
         description: trimmedDescription,
         totalAmountCents: totalAmountCents,
         saleType: saleType,
-        // Installments are no longer predefined by modality — they're generated one at a time as payments come in (see _applyPayment).
-        creditModality: null,
-        saleStatus: isCredit ? 'OUTSTANDING' : 'COMPLETED',
-        paymentStatus: isCredit ? 'PENDING' : 'PAID',
-        paidAmountCents: isCredit ? 0 : totalAmountCents,
         customerId: customerId,
-        walkInCustomerName: _cleanOrNull(walkInCustomerName),
-        saleDate: DateTime.now(),
-        creditDueDate: isCredit ? creditDueDate : null,
-        completedAt: isCredit ? null : DateTime.now(),
-        notes: _cleanOrNull(notes),
-        createdAt: DateTime.now(),
-        businessUnitId: businessUnitId,
+        walkInCustomerName: walkInCustomerName,
+        creditDueDate: creditDueDate,
+        notes: notes,
+        initialPaymentCents: initialPaymentCents,
+        initialPaymentMethod: initialPaymentMethod,
       );
-
-      final insertedId = await _saleDao.insertSale(sale, txn: txn);
-      var savedSale = sale.copyWith(idSale: insertedId);
-
-      if (isCredit && initialPaymentCents != null) {
-        savedSale = await _applyPayment(
-          txn: txn,
-          sale: savedSale,
-          paidAmountCents: initialPaymentCents,
-          paymentMethod: initialPaymentMethod,
-          notes: null,
-        );
-      }
-
-      return savedSale;
     });
   }
 
-  /* Cancels a sale: sets sale_status to CANCELLED and auto-cancels its unpaid installments. Existing sale_payment rows are left untouched —
-  they remain as payment history. This does NOT touch the `deleted`column; that flag is reserved for a possible future "remove from
-  records" action distinct from cancellation.*/
+  /* Sale made of catalog lines. Everything happens in one transaction:
+  sale, lines (snapshot) and stock movements, all or nothing.
+
+  - The total is the sum of the line subtotals, computed here; the UI never
+    sends one.
+  - Lines of the same item AND the same requested price are merged (their
+    quantities add up). Same item at different prices stays as separate
+    lines; the balance check still counts both because it reads the ledger
+    inside the transaction.
+  - Every line is validated against the DB: item exists, same store, not
+    deleted, active, quantity > 0.
+  - The description is generated ("2.5× Cable, 1× Delivery"); it is what
+    shows in statements. */
+  Future<SaleModel> createSaleWithItems({
+    required int businessUnitId,
+    required List<SaleLineInput> lines,
+    String saleType = 'NORMAL',
+    int? customerId,
+    String? walkInCustomerName,
+    DateTime? creditDueDate,
+    String? notes,
+    int? initialPaymentCents,
+    String initialPaymentMethod = 'CASH',
+  }) async {
+    if (lines.isEmpty) {
+      throw ArgumentError('A sale with items needs at least one line.');
+    }
+    final merged = _mergeLines(lines);
+
+    return _database.runInTransaction((txn) async {
+      final prepared = <_PreparedLine>[];
+      for (final line in merged) {
+        final item = await _catalogItemDao.getItemById(
+          line.catalogItemId,
+          txn: txn,
+        );
+        if (item == null) {
+          throw StateError('Catalog item not found.');
+        }
+        if (item.businessUnitId != businessUnitId) {
+          throw StateError('Item does not belong to the active store.');
+        }
+        if (item.deleted) {
+          throw StateError('"${item.name}" was deleted and cannot be sold.');
+        }
+        if (!item.active) {
+          throw StateError('"${item.name}" is inactive and cannot be sold.');
+        }
+
+        final unitPrice = line.unitPriceCents ?? item.salePriceCents;
+        if (unitPrice <= 0) {
+          throw ArgumentError('Unit price must be greater than zero.');
+        }
+        final subtotal =
+            QuantityUtils.lineSubtotalCents(line.quantityMilli, unitPrice);
+        if (subtotal <= 0) {
+          throw ArgumentError('Line total must be greater than zero.');
+        }
+
+        prepared.add(_PreparedLine(
+          item: item,
+          quantityMilli: line.quantityMilli,
+          unitPriceCents: unitPrice,
+          subtotalCents: subtotal,
+        ));
+      }
+
+      final totalCents =
+          prepared.fold<int>(0, (sum, line) => sum + line.subtotalCents);
+      final description = prepared
+          .map((l) => '${QuantityUtils.format(l.quantityMilli)}× ${l.item.name}')
+          .join(', ');
+
+      _validateSaleInput(
+        description: description,
+        totalAmountCents: totalCents,
+        saleType: saleType,
+        customerId: customerId,
+        walkInCustomerName: walkInCustomerName,
+        initialPaymentCents: initialPaymentCents,
+      );
+
+      final sale = await _insertSaleInTxn(
+        txn,
+        businessUnitId: businessUnitId,
+        description: description,
+        totalAmountCents: totalCents,
+        saleType: saleType,
+        customerId: customerId,
+        walkInCustomerName: walkInCustomerName,
+        creditDueDate: creditDueDate,
+        notes: notes,
+        initialPaymentCents: initialPaymentCents,
+        initialPaymentMethod: initialPaymentMethod,
+      );
+
+      for (final line in prepared) {
+        final item = line.item;
+        // Snapshot: services carry no cost.
+        final unitCost = item.isProduct ? item.costPriceCents : 0;
+
+        await _saleItemDao.insertItem(
+          SaleItemModel(
+            saleId: sale.idSale!,
+            catalogItemId: item.idCatalogItem!,
+            itemNameSnapshot: item.name,
+            itemTypeSnapshot: item.itemType,
+            unitSnapshot: item.unit,
+            quantityMilli: line.quantityMilli,
+            unitPriceCents: line.unitPriceCents,
+            unitCostCents: unitCost,
+            subtotalCents: line.subtotalCents,
+            createdAt: DateTime.now(),
+          ),
+          txn: txn,
+        );
+
+        if (item.isProduct && item.trackStock) {
+          final balance = await _stockMovementDao.getBalance(
+            item.idCatalogItem!,
+            txn: txn,
+          );
+          if (line.quantityMilli > balance) {
+            throw StateError(
+              'Insufficient stock for "${item.name}": balance is '
+              '${QuantityUtils.format(balance)}, requested '
+              '${QuantityUtils.format(line.quantityMilli)}.',
+            );
+          }
+          await _stockMovementDao.insertMovement(
+            StockMovementModel(
+              businessUnitId: businessUnitId,
+              catalogItemId: item.idCatalogItem!,
+              movementType: StockMovementModel.typeSale,
+              quantityMilli: -line.quantityMilli,
+              unitCostCents: unitCost,
+              saleId: sale.idSale,
+              createdAt: DateTime.now(),
+            ),
+            txn: txn,
+          );
+        }
+      }
+
+      return sale;
+    });
+  }
+
+  /* Cancels a sale: sets sale_status to CANCELLED, auto-cancels its unpaid installments and gives back the stock it consumed.
+  Existing sale_payment rows are left untouched — they remain as payment history. This does NOT touch the `deleted`column;
+  that flag is reserved for a possible future "remove from records" action distinct from cancellation.*/
   Future<SaleModel> cancelSale({
     required int saleId,
     required String cancellationReason,
@@ -128,6 +254,7 @@ class SaleRepository {
       }
 
       await _saleDao.cancelUnpaidInstallments(saleId, txn: txn);
+      await _reverseSaleStock(txn, sale);
 
       final updatedSale = sale.copyWith(
         saleStatus: 'CANCELLED',
@@ -299,6 +426,53 @@ class SaleRepository {
   }
 
   // ---------------------------------------------------------------------
+  // sale lines and sellable items
+  // ---------------------------------------------------------------------
+
+  Future<List<SaleItemModel>> getSaleItems(int saleId) {
+    return _saleItemDao.getItemsBySale(saleId);
+  }
+
+  /// Lines of several sales grouped by sale id (sales without lines are absent).
+  Future<Map<int, List<SaleItemModel>>> getItemsForSales(
+    List<int> saleIds,
+  ) async {
+    final items = await _saleItemDao.getItemsBySaleIds(saleIds);
+    final grouped = <int, List<SaleItemModel>>{};
+    for (final item in items) {
+      grouped.putIfAbsent(item.saleId, () => []).add(item);
+    }
+    return grouped;
+  }
+
+  /* Active catalog items of the store for the item picker. Tracked products
+  carry their current balance. Two queries in total, whatever the size. */
+  Future<List<SellableItem>> getSellableItems({
+    required int businessUnitId,
+    String? search,
+  }) async {
+    final items = await _catalogItemDao.getAllItems(
+      businessUnitId: businessUnitId,
+      search: search,
+      onlyActive: true,
+    );
+    final balances = await _stockMovementDao.getBalances(
+      businessUnitId: businessUnitId,
+    );
+    final balanceById = {
+      for (final row in balances) row.item.idCatalogItem!: row.balanceMilli,
+    };
+
+    return items.map((item) {
+      final tracked = item.isProduct && item.trackStock;
+      return SellableItem(
+        item: item,
+        balanceMilli: tracked ? (balanceById[item.idCatalogItem!] ?? 0) : null,
+      );
+    }).toList();
+  }
+
+  // ---------------------------------------------------------------------
   // badge stats
   // ---------------------------------------------------------------------
 
@@ -423,8 +597,6 @@ class SaleRepository {
     );
   }
 
-  /* Revenue grouped by day for the period. Pass null businessUnitId
-   for the consolidated (all stores) view. */
   /* Revenue grouped by day for the period. A null businessUnitId sums every
      store (consolidated view), following the same per-unit loop used by
      getConsolidatedDashboardStats. */
@@ -472,6 +644,168 @@ class SaleRepository {
   // helpers
   // ---------------------------------------------------------------------
 
+  /* Input rules shared by createSale and createSaleWithItems. [description]
+  must already be trimmed. */
+  void _validateSaleInput({
+    required String description,
+    required int totalAmountCents,
+    required String saleType,
+    required int? customerId,
+    required String? walkInCustomerName,
+    required int? initialPaymentCents,
+  }) {
+    if (description.isEmpty) {
+      throw ArgumentError('Sale description cannot be empty.');
+    }
+    if (totalAmountCents <= 0) {
+      throw ArgumentError('Sale total must be greater than zero.');
+    }
+
+    final isCredit = saleType == 'CREDIT';
+
+    if (isCredit) {
+      final hasCustomer = customerId != null;
+      final hasWalkIn =
+          walkInCustomerName != null && walkInCustomerName.trim().isNotEmpty;
+      if (!hasCustomer && !hasWalkIn) {
+        throw ArgumentError(
+          'A CREDIT sale needs either a customer or a walk-in customer name.',
+        );
+      }
+    }
+
+    if (initialPaymentCents != null) {
+      if (!isCredit) {
+        throw ArgumentError('Only CREDIT sales accept an initial payment.');
+      }
+      if (initialPaymentCents <= 0) {
+        throw ArgumentError('Initial payment must be greater than zero.');
+      }
+      if (initialPaymentCents > totalAmountCents) {
+        throw ArgumentError('Initial payment cannot exceed the sale total.');
+      }
+    }
+  }
+
+  /* Inserts the sale row (reference, statuses) and the optional initial
+  payment, inside the caller's transaction. Inputs are already validated. */
+  Future<SaleModel> _insertSaleInTxn(
+    Transaction txn, {
+    required int businessUnitId,
+    required String description,
+    required int totalAmountCents,
+    required String saleType,
+    required int? customerId,
+    required String? walkInCustomerName,
+    required DateTime? creditDueDate,
+    required String? notes,
+    required int? initialPaymentCents,
+    required String initialPaymentMethod,
+  }) async {
+    final isCredit = saleType == 'CREDIT';
+    final reference = await _generateSaleReference(txn);
+
+    final sale = SaleModel(
+      reference: reference,
+      description: description,
+      totalAmountCents: totalAmountCents,
+      saleType: saleType,
+      // Installments are no longer predefined by modality — they're generated one at a time as payments come in (see _applyPayment).
+      creditModality: null,
+      saleStatus: isCredit ? 'OUTSTANDING' : 'COMPLETED',
+      paymentStatus: isCredit ? 'PENDING' : 'PAID',
+      paidAmountCents: isCredit ? 0 : totalAmountCents,
+      customerId: customerId,
+      walkInCustomerName: _cleanOrNull(walkInCustomerName),
+      saleDate: DateTime.now(),
+      creditDueDate: isCredit ? creditDueDate : null,
+      completedAt: isCredit ? null : DateTime.now(),
+      notes: _cleanOrNull(notes),
+      createdAt: DateTime.now(),
+      businessUnitId: businessUnitId,
+    );
+
+    final insertedId = await _saleDao.insertSale(sale, txn: txn);
+    var savedSale = sale.copyWith(idSale: insertedId);
+
+    if (isCredit && initialPaymentCents != null) {
+      savedSale = await _applyPayment(
+        txn: txn,
+        sale: savedSale,
+        paidAmountCents: initialPaymentCents,
+        paymentMethod: initialPaymentMethod,
+        notes: null,
+      );
+    }
+
+    return savedSale;
+  }
+
+  /* Merges lines of the same item with the same requested price (null =
+  catalog price). Different prices of the same item stay separate. */
+  List<SaleLineInput> _mergeLines(List<SaleLineInput> lines) {
+    final merged = <String, SaleLineInput>{};
+    for (final line in lines) {
+      if (line.quantityMilli <= 0) {
+        throw ArgumentError('Quantity must be greater than zero.');
+      }
+      final key = '${line.catalogItemId}|${line.unitPriceCents}';
+      final existing = merged[key];
+      merged[key] = existing == null
+          ? line
+          : SaleLineInput(
+              catalogItemId: line.catalogItemId,
+              quantityMilli: existing.quantityMilli + line.quantityMilli,
+              unitPriceCents: line.unitPriceCents,
+            );
+    }
+    return merged.values.toList();
+  }
+
+  /* Gives back the stock of a cancelled sale. Per item: sold (SALE) minus
+  already reversed (SALE_REVERSAL); only a positive remainder is reversed, so
+  running this twice never duplicates a reversal. Free sales have no
+  movements and nothing happens. */
+  Future<void> _reverseSaleStock(Transaction txn, SaleModel sale) async {
+    final movements = await _stockMovementDao.getMovementsBySale(
+      sale.idSale!,
+      txn: txn,
+    );
+    if (movements.isEmpty) return;
+
+    final sold = <int, int>{};
+    final reversed = <int, int>{};
+    final unitCost = <int, int?>{};
+
+    for (final m in movements) {
+      if (m.movementType == StockMovementModel.typeSale) {
+        sold[m.catalogItemId] = (sold[m.catalogItemId] ?? 0) - m.quantityMilli;
+        unitCost[m.catalogItemId] = m.unitCostCents;
+      } else if (m.movementType == StockMovementModel.typeSaleReversal) {
+        reversed[m.catalogItemId] =
+            (reversed[m.catalogItemId] ?? 0) + m.quantityMilli;
+      }
+    }
+
+    for (final entry in sold.entries) {
+      final remaining = entry.value - (reversed[entry.key] ?? 0);
+      if (remaining <= 0) continue;
+
+      await _stockMovementDao.insertMovement(
+        StockMovementModel(
+          businessUnitId: sale.businessUnitId,
+          catalogItemId: entry.key,
+          movementType: StockMovementModel.typeSaleReversal,
+          quantityMilli: remaining,
+          unitCostCents: unitCost[entry.key],
+          saleId: sale.idSale,
+          createdAt: DateTime.now(),
+        ),
+        txn: txn,
+      );
+    }
+  }
+
     String _dayKey(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
@@ -494,3 +828,17 @@ class SaleRepository {
   }
 }
 
+/// A validated line, ready to be written.
+class _PreparedLine {
+  const _PreparedLine({
+    required this.item,
+    required this.quantityMilli,
+    required this.unitPriceCents,
+    required this.subtotalCents,
+  });
+
+  final CatalogItemModel item;
+  final int quantityMilli;
+  final int unitPriceCents;
+  final int subtotalCents;
+}

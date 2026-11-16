@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/sale_provider.dart';
 import '../../providers/user_provider.dart';
+import '/widgets/sale_item_lines.dart';
 import 'package:mini/l10n/app_localizations.dart';
 
 /* Detail screen for a single CREDIT sale. This is where each new payment is registered; every payment registered here automatically
@@ -147,6 +148,7 @@ class _CreditSaleDetailScreenState extends State<CreditSaleDetailScreen> {
     final loc = AppLocalizations.of(context)!;
     final sale = context.watch<SaleProvider>().currentSale;
     final payments = context.watch<SaleProvider>().payments;
+    final saleItems = context.watch<SaleProvider>().saleItems;
     final isLoading = context.watch<SaleProvider>().isLoading;
     final currency = context.watch<UserProvider>().user?.currency ?? 'MZN';
     final amountFormat = NumberFormat('#,##0.00');
@@ -223,6 +225,19 @@ class _CreditSaleDetailScreenState extends State<CreditSaleDetailScreen> {
               ),
             ),
           ),
+          if (saleItems.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: SaleItemLines(
+                  title: loc.saleItemsTitle,
+                  items: saleItems,
+                  currency: currency,
+                ),
+              ),
+            ),
+          ],
           if (!isSettled) ...[
             const SizedBox(height: 16),
             Card(

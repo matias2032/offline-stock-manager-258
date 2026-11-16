@@ -1,9 +1,10 @@
 import 'package:flutter/foundation.dart';
+import '../models/sale_item_model.dart';
 import '../models/sale_model.dart';
 import '../repositories/sale_repository.dart';
 import 'business_unit_provider.dart';
 
-/* Thin UI state holder for the sale module (sale, sale_installment,sale_payment). 
+/* Thin UI state holder for the sale module (sale, sale_item, sale_installment,sale_payment). 
 Zero business logic — only calls SaleRepository and
 exposes loading/error/data for the UI. Listens to BusinessUnitProvider 
 so switching the active business unit reloads every unit-scoped list 
@@ -21,6 +22,17 @@ class SaleProvider extends ChangeNotifier {
   SaleModel? _currentSale;
   List<SaleInstallmentModel> _installments = [];
   List<SalePaymentModel> _payments = [];
+
+  // Lines of the sales shown in the main list, keyed by sale id.
+  Map<int, List<SaleItemModel>> _saleItemsBySale = {};
+
+  // Lines of the sale open in the detail screen.
+  List<SaleItemModel> _currentSaleItems = [];
+
+  // Catalog items offered by the item picker (own loading flag, so the
+  // sale form does not flicker while the user searches).
+  List<SellableItem> _sellableItems = [];
+  bool _isLoadingSellable = false;
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -55,9 +67,16 @@ class SaleProvider extends ChangeNotifier {
   SaleModel? get currentSale => _currentSale;
   List<SaleInstallmentModel> get installments => _installments;
   List<SalePaymentModel> get payments => _payments;
+  List<SaleItemModel> get saleItems => _currentSaleItems;
+  List<SellableItem> get sellableItems => _sellableItems;
+  bool get isLoadingSellable => _isLoadingSellable;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   int get outstandingCreditCount => _outstandingCreditCount;
+
+  /// Lines of a sale of the main list (empty for free sales).
+  List<SaleItemModel> itemsFor(int saleId) =>
+      _saleItemsBySale[saleId] ?? const [];
 
   int? get _activeUnitId => _businessUnitProvider.activeBusinessUnit?.idBusinessUnit;
 
@@ -78,6 +97,7 @@ class SaleProvider extends ChangeNotifier {
     final unitId = _activeUnitId;
     if (unitId == null) {
       _sales = [];
+      _saleItemsBySale = {};
       notifyListeners();
       return;
     }
@@ -91,6 +111,8 @@ class SaleProvider extends ChangeNotifier {
         startDate: startDate,
         endDate: endDate,
       );
+      _saleItemsBySale = await _saleRepository
+          .getItemsForSales(_sales.map((s) => s.idSale!).toList());
       _errorMessage = null;
     } catch (error) {
       _errorMessage = error.toString();
@@ -135,6 +157,7 @@ class SaleProvider extends ChangeNotifier {
     }
   }
 
+  /// Free sale: manual description and total, no lines.
   Future<bool> createSale({
     required String description,
     required int totalAmountCents,
@@ -161,6 +184,50 @@ class SaleProvider extends ChangeNotifier {
         businessUnitId: unitId,
         description: description,
         totalAmountCents: totalAmountCents,
+        saleType: saleType,
+        customerId: customerId,
+        walkInCustomerName: walkInCustomerName,
+        creditDueDate: creditDueDate,
+        notes: notes,
+        initialPaymentCents: initialPaymentCents,
+        initialPaymentMethod: initialPaymentMethod,
+      );
+      await _refreshSales();
+      if (_creditSalesLoaded) await _refreshCreditSales();
+      await loadOutstandingCreditCount();
+      _errorMessage = null;
+      return true;
+    } catch (error) {
+      _errorMessage = error.toString();
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  /// Sale made of catalog lines; the total is computed by the repository.
+  Future<bool> createSaleWithItems({
+    required List<SaleLineInput> lines,
+    String saleType = 'NORMAL',
+    int? customerId,
+    String? walkInCustomerName,
+    DateTime? creditDueDate,
+    String? notes,
+    int? initialPaymentCents,
+    String initialPaymentMethod = 'CASH',
+  }) async {
+    final unitId = _activeUnitId;
+    if (unitId == null) {
+      _errorMessage = 'No active business unit selected.';
+      notifyListeners();
+      return false;
+    }
+
+    _setLoading(true);
+    try {
+      await _saleRepository.createSaleWithItems(
+        businessUnitId: unitId,
+        lines: lines,
         saleType: saleType,
         customerId: customerId,
         walkInCustomerName: walkInCustomerName,
@@ -236,7 +303,7 @@ class SaleProvider extends ChangeNotifier {
     }
   }
 
-/* Loads a sale's installments and payments together — used by the
+/* Loads a sale's installments, payments and lines together — used by the
   sale detail screen. Subsequent registerPayment/cancelSale calls for
   this same saleId keep this data in sync automatically. */
   Future<void> loadSaleDetail(int saleId) async {
@@ -249,6 +316,31 @@ class SaleProvider extends ChangeNotifier {
       _errorMessage = error.toString();
     } finally {
       _setLoading(false);
+    }
+  }
+
+  /* Loads the catalog items the item picker offers (active items of the
+  store, tracked products with their balance). */
+  Future<void> loadSellableItems({String? search}) async {
+    final unitId = _activeUnitId;
+    if (unitId == null) {
+      _sellableItems = [];
+      notifyListeners();
+      return;
+    }
+
+    _isLoadingSellable = true;
+    notifyListeners();
+    try {
+      _sellableItems = await _saleRepository.getSellableItems(
+        businessUnitId: unitId,
+        search: search,
+      );
+    } catch (error) {
+      _errorMessage = error.toString();
+    } finally {
+      _isLoadingSellable = false;
+      notifyListeners();
     }
   }
 
@@ -276,6 +368,7 @@ class SaleProvider extends ChangeNotifier {
     final unitId = _activeUnitId;
     if (unitId == null) {
       _sales = [];
+      _saleItemsBySale = {};
       return;
     }
     _sales = await _saleRepository.getSalesForSalesList(
@@ -285,6 +378,8 @@ class SaleProvider extends ChangeNotifier {
       startDate: _lastStartDate,
       endDate: _lastEndDate,
     );
+    _saleItemsBySale = await _saleRepository
+        .getItemsForSales(_sales.map((s) => s.idSale!).toList());
   }
 
   Future<void> _refreshCreditSales() async {
@@ -305,6 +400,7 @@ class SaleProvider extends ChangeNotifier {
     _currentSale = await _saleRepository.getSaleById(saleId);
     _installments = await _saleRepository.getInstallmentsBySale(saleId);
     _payments = await _saleRepository.getPaymentsBySale(saleId);
+    _currentSaleItems = await _saleRepository.getSaleItems(saleId);
   }
 
 /* Standalone lookup of a sale's installments, independent from the

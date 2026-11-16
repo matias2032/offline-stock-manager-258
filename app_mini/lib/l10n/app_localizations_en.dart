@@ -1056,4 +1056,232 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get peakLabel => 'Peak';
+
+  @override
+  String get catalogTitle => 'Catalog';
+
+  @override
+  String get newCatalogItem => 'New item';
+
+  @override
+  String get editCatalogItem => 'Edit item';
+
+  @override
+  String get createCatalogItem => 'Create item';
+
+  @override
+  String get noCatalogItemsYet => 'No products or services registered yet.';
+
+  @override
+  String get deleteCatalogItem => 'Delete item';
+
+  @override
+  String confirmDeleteCatalogItemMessage(String name) {
+    return 'Are you sure you want to delete \"$name\"? Past sales keep their history.';
+  }
+
+  @override
+  String get searchLabel => 'Search';
+
+  @override
+  String get productLabel => 'Product';
+
+  @override
+  String get serviceLabel => 'Service';
+
+  @override
+  String get itemNameLabel => 'Name';
+
+  @override
+  String get itemCodeLabel => 'Code (optional)';
+
+  @override
+  String get categoryLabel => 'Category';
+
+  @override
+  String get noCategoryLabel => 'No category';
+
+  @override
+  String get unitLabel => 'Unit';
+
+  @override
+  String get salePriceLabel => 'Sale price';
+
+  @override
+  String get costPriceLabel => 'Cost price';
+
+  @override
+  String get costPriceHelperText =>
+      'Reference cost. Updated automatically when you register a purchase.';
+
+  @override
+  String get trackStockLabel => 'Track stock';
+
+  @override
+  String get trackStockHelperText =>
+      'Quantity goes down with each sale and up with each purchase.';
+
+  @override
+  String get minStockLabel => 'Minimum stock (alert)';
+
+  @override
+  String get activeLabel => 'Active';
+
+  @override
+  String get inactiveLabel => 'Inactive';
+
+  @override
+  String get newCategory => 'New category';
+
+  @override
+  String get renameCategory => 'Rename category';
+
+  @override
+  String get categoryNameLabel => 'Category name';
+
+  @override
+  String get deleteCategory => 'Delete category';
+
+  @override
+  String confirmDeleteCategoryMessage(String name) {
+    return 'Delete \"$name\"? Items in this category will be kept, just without a category.';
+  }
+
+  @override
+  String get noCategoriesYet => 'No categories yet.';
+
+  @override
+  String get stockTitle => 'Stock';
+
+  @override
+  String lowStockFilterLabel(int count) {
+    return 'Below minimum ($count)';
+  }
+
+  @override
+  String get belowMinimumLabel => 'Below minimum';
+
+  @override
+  String stockMinLabel(String min) {
+    return 'Min: $min';
+  }
+
+  @override
+  String get noStockItemsYet =>
+      'No stock-tracked products yet. Turn on \"Track stock\" on a product in the catalog.';
+
+  @override
+  String get noInitialStockLabel => 'No initial stock';
+
+  @override
+  String get deletedLabel => 'Deleted';
+
+  @override
+  String get stockHistoryTitle => 'Stock history';
+
+  @override
+  String get noMovementsYet => 'No movements yet.';
+
+  @override
+  String get stockPurchaseButton => 'Register purchase';
+
+  @override
+  String get stockPurchaseTitle => 'Stock purchase';
+
+  @override
+  String get initialStockButton => 'Set initial stock';
+
+  @override
+  String get adjustStockButton => 'Adjust stock';
+
+  @override
+  String get quantityLabel => 'Quantity';
+
+  @override
+  String get unitCostLabel => 'Unit cost';
+
+  @override
+  String get unitCostOptionalLabel => 'Unit cost (optional)';
+
+  @override
+  String purchaseTotalLabel(String amount) {
+    return 'Total: $amount';
+  }
+
+  @override
+  String get enterValidQuantityMessage => 'Enter a valid quantity';
+
+  @override
+  String get noteRequiredMessage => 'A note is required for this movement';
+
+  @override
+  String get movementTypeLabel => 'Movement type';
+
+  @override
+  String get stockMovementSaved => 'Movement registered.';
+
+  @override
+  String stockPurchaseExpenseDescription(String quantity, String name) {
+    return 'Stock purchase: $quantity × $name';
+  }
+
+  @override
+  String get stockPurchaseTag => 'Stock purchase';
+
+  @override
+  String get stockExpenseLockedMessage =>
+      'This expense comes from a stock purchase and cannot be edited or deleted.';
+
+  @override
+  String get movementInitial => 'Initial stock';
+
+  @override
+  String get movementPurchase => 'Purchase';
+
+  @override
+  String get movementSale => 'Sale';
+
+  @override
+  String get movementSaleReversal => 'Sale reversal';
+
+  @override
+  String get movementAdjustmentIn => 'Adjustment (in)';
+
+  @override
+  String get movementAdjustmentOut => 'Adjustment (out)';
+
+  @override
+  String get movementLoss => 'Loss';
+
+  @override
+  String get saleItemsTitle => 'Items';
+
+  @override
+  String get addItemButton => 'Add item';
+
+  @override
+  String get selectItemTitle => 'Select item';
+
+  @override
+  String get removeItemTooltip => 'Remove item';
+
+  @override
+  String get unitPriceLabel => 'Unit price';
+
+  @override
+  String lineSubtotalLabel(String amount) {
+    return 'Subtotal: $amount';
+  }
+
+  @override
+  String stockAvailableLabel(String quantity, String unit) {
+    return 'In stock: $quantity $unit';
+  }
+
+  @override
+  String get outOfStockLabel => 'Out of stock';
+
+  @override
+  String get noSellableItemsYet =>
+      'No active products or services in the catalog yet.';
 }

@@ -14,7 +14,7 @@ class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._internal();
 
   static const String _databaseName = 'business_manager.db';
-  static const int _databaseVersion = 2;
+    static const int _databaseVersion = 3;
 
   Database? _database;
 
@@ -35,14 +35,7 @@ class LocalDatabase {
       version: _databaseVersion,
       onConfigure: _onConfigure,
       onCreate: _onCreate,
-
-      onUpgrade: (db, oldVersion, newVersion) async {
-  if (oldVersion < 2) {
-    await db.execute(
-      'ALTER TABLE financial_statement_sale_item ADD COLUMN customer_name TEXT',
-    );
-  }
-},
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -56,6 +49,27 @@ class LocalDatabase {
       batch.execute(statement);
     }
     await batch.commit(noResult: true);
+  }
+
+  /* Incremental migrations. Each block must only create/alter what its own
+  version introduced. sqflite already runs onUpgrade inside a transaction,
+  so a failure rolls the whole upgrade back. */
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute(
+        'ALTER TABLE financial_statement_sale_item ADD COLUMN customer_name TEXT',
+      );
+    }
+
+    if (oldVersion < 3) {
+      // Same list used by _onCreate, so fresh installs and upgrades
+      // can never diverge.
+      final batch = db.batch();
+      for (final statement in _v3Statements) {
+        batch.execute(statement);
+      }
+      await batch.commit(noResult: true);
+    }
   }
 
   /* Runs [action] inside a single SQLite transaction. Use this from repositories whenever an operation touches more than
@@ -103,6 +117,10 @@ class LocalDatabase {
   //    child item tables, so a statement's numbers never change even
   //    if the underlying sale/expense rows are later edited or
   //    cancelled.
+  //  - (v3) `item_category`, `catalog_item`, `sale_item` and
+  //    `stock_movement` add the product/service catalog and the stock
+  //    ledger. Stock is never stored as an editable number: the balance
+  //    is SUM(stock_movement.quantity). Movements are append-only.
   
 
   static final List<String> _schemaStatements = [
@@ -377,5 +395,141 @@ class LocalDatabase {
     ''',
     'CREATE INDEX idx_statement_expense_item_statement '
         'ON financial_statement_expense_item(financial_statement_id)',
+
+    // v3: catalog + stock
+    ..._v3Statements,
+  ];
+
+  // Schema v3 — catalog, sale lines and stock ledger.
+  // Quantities are integers in thousandths of the unit (2500 = 2.5), so
+  // decimals never touch floating point. See core/quantity_utils.dart.
+  // Order matters (foreign keys): item_category -> catalog_item ->
+  // sale_item -> stock_movement.
+  static final List<String> _v3Statements = [
+    // item_category
+    '''
+    CREATE TABLE item_category (
+        id_item_category  INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_unit_id  INTEGER NOT NULL
+            REFERENCES business_unit(id_business_unit),
+        name              TEXT NOT NULL,
+        deleted           INTEGER NOT NULL DEFAULT 0,
+        created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at        TEXT
+    )
+    ''',
+    'CREATE UNIQUE INDEX uq_item_category_name '
+        'ON item_category(business_unit_id, name COLLATE NOCASE) '
+        'WHERE deleted = 0',
+    '''
+    CREATE TRIGGER trg_item_category_updated
+    AFTER UPDATE ON item_category
+    BEGIN
+        UPDATE item_category SET updated_at = datetime('now')
+        WHERE id_item_category = NEW.id_item_category;
+    END
+    ''',
+
+    // catalog_item (products and services)
+    '''
+    CREATE TABLE catalog_item (
+        id_catalog_item   INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_unit_id  INTEGER NOT NULL
+            REFERENCES business_unit(id_business_unit),
+        item_type         TEXT NOT NULL
+            CHECK (item_type IN ('PRODUCT','SERVICE')),
+        code              TEXT,
+        name              TEXT NOT NULL,
+        description       TEXT,
+        category_id       INTEGER
+            REFERENCES item_category(id_item_category),
+        unit              TEXT NOT NULL DEFAULT 'UN',
+        sale_price_cents  INTEGER NOT NULL CHECK (sale_price_cents >= 0),
+        cost_price_cents  INTEGER NOT NULL DEFAULT 0
+            CHECK (cost_price_cents >= 0),
+        track_stock       INTEGER NOT NULL DEFAULT 0
+            CHECK (track_stock IN (0,1)),
+        min_stock_milli   INTEGER NOT NULL DEFAULT 0
+            CHECK (min_stock_milli >= 0),
+        active            INTEGER NOT NULL DEFAULT 1,
+        deleted           INTEGER NOT NULL DEFAULT 0,
+        created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at        TEXT,
+        CHECK (item_type = 'PRODUCT' OR track_stock = 0)
+    )
+    ''',
+    'CREATE INDEX idx_catalog_item_business_unit '
+        'ON catalog_item(business_unit_id)',
+    'CREATE INDEX idx_catalog_item_category ON catalog_item(category_id)',
+    'CREATE INDEX idx_catalog_item_name ON catalog_item(name)',
+    'CREATE UNIQUE INDEX uq_catalog_item_code '
+        'ON catalog_item(business_unit_id, code COLLATE NOCASE) '
+        'WHERE code IS NOT NULL AND deleted = 0',
+    '''
+    CREATE TRIGGER trg_catalog_item_updated
+    AFTER UPDATE ON catalog_item
+    BEGIN
+        UPDATE catalog_item SET updated_at = datetime('now')
+        WHERE id_catalog_item = NEW.id_catalog_item;
+    END
+    ''',
+
+    // sale_item (lines of a sale; immutable snapshot, no updated_at)
+    '''
+    CREATE TABLE sale_item (
+        id_sale_item         INTEGER PRIMARY KEY AUTOINCREMENT,
+        sale_id              INTEGER NOT NULL
+            REFERENCES sale(id_sale) ON DELETE CASCADE,
+        catalog_item_id      INTEGER NOT NULL
+            REFERENCES catalog_item(id_catalog_item),
+        item_name_snapshot   TEXT NOT NULL,
+        item_type_snapshot   TEXT NOT NULL
+            CHECK (item_type_snapshot IN ('PRODUCT','SERVICE')),
+        unit_snapshot        TEXT NOT NULL DEFAULT 'UN',
+        quantity_milli       INTEGER NOT NULL CHECK (quantity_milli > 0),
+        unit_price_cents     INTEGER NOT NULL CHECK (unit_price_cents >= 0),
+        unit_cost_cents      INTEGER NOT NULL DEFAULT 0
+            CHECK (unit_cost_cents >= 0),
+        subtotal_cents       INTEGER NOT NULL CHECK (subtotal_cents >= 0),
+        created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+    ''',
+    'CREATE INDEX idx_sale_item_sale ON sale_item(sale_id)',
+    'CREATE INDEX idx_sale_item_catalog_item ON sale_item(catalog_item_id)',
+
+    // stock_movement (append-only ledger; balance = SUM(quantity))
+    '''
+    CREATE TABLE stock_movement (
+        id_stock_movement  INTEGER PRIMARY KEY AUTOINCREMENT,
+        business_unit_id   INTEGER NOT NULL
+            REFERENCES business_unit(id_business_unit),
+        catalog_item_id    INTEGER NOT NULL
+            REFERENCES catalog_item(id_catalog_item),
+        movement_type      TEXT NOT NULL
+            CHECK (movement_type IN (
+                'INITIAL','PURCHASE','SALE','SALE_REVERSAL',
+                'ADJUSTMENT_IN','ADJUSTMENT_OUT','LOSS'
+            )),
+        quantity_milli     INTEGER NOT NULL,
+        unit_cost_cents    INTEGER CHECK (unit_cost_cents >= 0),
+        sale_id            INTEGER REFERENCES sale(id_sale),
+        expense_id         INTEGER REFERENCES expense(id_expense),
+        notes              TEXT,
+        created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+        CHECK (
+            (movement_type IN
+                ('INITIAL','PURCHASE','SALE_REVERSAL','ADJUSTMENT_IN')
+                AND quantity_milli > 0)
+            OR
+            (movement_type IN ('SALE','ADJUSTMENT_OUT','LOSS')
+                AND quantity_milli < 0)
+        )
+    )
+    ''',
+    'CREATE INDEX idx_stock_movement_item ON stock_movement(catalog_item_id)',
+    'CREATE INDEX idx_stock_movement_business_unit '
+        'ON stock_movement(business_unit_id)',
+    'CREATE INDEX idx_stock_movement_sale ON stock_movement(sale_id)',
+    'CREATE INDEX idx_stock_movement_date ON stock_movement(created_at)',
   ];
 }

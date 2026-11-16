@@ -1073,4 +1073,233 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get peakLabel => 'Pico';
+
+  @override
+  String get catalogTitle => 'Catálogo';
+
+  @override
+  String get newCatalogItem => 'Novo item';
+
+  @override
+  String get editCatalogItem => 'Editar item';
+
+  @override
+  String get createCatalogItem => 'Criar item';
+
+  @override
+  String get noCatalogItemsYet =>
+      'Ainda não há produtos nem serviços registados.';
+
+  @override
+  String get deleteCatalogItem => 'Eliminar item';
+
+  @override
+  String confirmDeleteCatalogItemMessage(String name) {
+    return 'Tem a certeza de que deseja eliminar \"$name\"? As vendas passadas mantêm o histórico.';
+  }
+
+  @override
+  String get searchLabel => 'Pesquisar';
+
+  @override
+  String get productLabel => 'Produto';
+
+  @override
+  String get serviceLabel => 'Serviço';
+
+  @override
+  String get itemNameLabel => 'Nome';
+
+  @override
+  String get itemCodeLabel => 'Código (opcional)';
+
+  @override
+  String get categoryLabel => 'Categoria';
+
+  @override
+  String get noCategoryLabel => 'Sem categoria';
+
+  @override
+  String get unitLabel => 'Unidade';
+
+  @override
+  String get salePriceLabel => 'Preço de venda';
+
+  @override
+  String get costPriceLabel => 'Preço de custo';
+
+  @override
+  String get costPriceHelperText =>
+      'Custo de referência. É actualizado automaticamente ao registar uma compra.';
+
+  @override
+  String get trackStockLabel => 'Controlar estoque';
+
+  @override
+  String get trackStockHelperText =>
+      'A quantidade desce a cada venda e sobe a cada compra.';
+
+  @override
+  String get minStockLabel => 'Estoque mínimo (alerta)';
+
+  @override
+  String get activeLabel => 'Activo';
+
+  @override
+  String get inactiveLabel => 'Inactivo';
+
+  @override
+  String get newCategory => 'Nova categoria';
+
+  @override
+  String get renameCategory => 'Renomear categoria';
+
+  @override
+  String get categoryNameLabel => 'Nome da categoria';
+
+  @override
+  String get deleteCategory => 'Eliminar categoria';
+
+  @override
+  String confirmDeleteCategoryMessage(String name) {
+    return 'Eliminar \"$name\"? Os itens desta categoria são mantidos, apenas ficam sem categoria.';
+  }
+
+  @override
+  String get noCategoriesYet => 'Ainda não há categorias.';
+
+  @override
+  String get stockTitle => 'Estoque';
+
+  @override
+  String lowStockFilterLabel(int count) {
+    return 'Abaixo do mínimo ($count)';
+  }
+
+  @override
+  String get belowMinimumLabel => 'Abaixo do mínimo';
+
+  @override
+  String stockMinLabel(String min) {
+    return 'Mín.: $min';
+  }
+
+  @override
+  String get noStockItemsYet =>
+      'Ainda não há produtos com controlo de estoque. Active \"Controlar estoque\" num produto do catálogo.';
+
+  @override
+  String get noInitialStockLabel => 'Sem estoque inicial';
+
+  @override
+  String get deletedLabel => 'Eliminado';
+
+  @override
+  String get stockHistoryTitle => 'Histórico de estoque';
+
+  @override
+  String get noMovementsYet => 'Ainda não há movimentos.';
+
+  @override
+  String get stockPurchaseButton => 'Registar compra';
+
+  @override
+  String get stockPurchaseTitle => 'Compra de estoque';
+
+  @override
+  String get initialStockButton => 'Definir estoque inicial';
+
+  @override
+  String get adjustStockButton => 'Ajustar estoque';
+
+  @override
+  String get quantityLabel => 'Quantidade';
+
+  @override
+  String get unitCostLabel => 'Custo unitário';
+
+  @override
+  String get unitCostOptionalLabel => 'Custo unitário (opcional)';
+
+  @override
+  String purchaseTotalLabel(String amount) {
+    return 'Total: $amount';
+  }
+
+  @override
+  String get enterValidQuantityMessage => 'Indique uma quantidade válida';
+
+  @override
+  String get noteRequiredMessage => 'A nota é obrigatória neste movimento';
+
+  @override
+  String get movementTypeLabel => 'Tipo de movimento';
+
+  @override
+  String get stockMovementSaved => 'Movimento registado.';
+
+  @override
+  String stockPurchaseExpenseDescription(String quantity, String name) {
+    return 'Compra de estoque: $quantity × $name';
+  }
+
+  @override
+  String get stockPurchaseTag => 'Compra de estoque';
+
+  @override
+  String get stockExpenseLockedMessage =>
+      'Esta despesa vem de uma compra de estoque e não pode ser editada nem eliminada.';
+
+  @override
+  String get movementInitial => 'Estoque inicial';
+
+  @override
+  String get movementPurchase => 'Compra';
+
+  @override
+  String get movementSale => 'Venda';
+
+  @override
+  String get movementSaleReversal => 'Estorno de venda';
+
+  @override
+  String get movementAdjustmentIn => 'Ajuste (entrada)';
+
+  @override
+  String get movementAdjustmentOut => 'Ajuste (saída)';
+
+  @override
+  String get movementLoss => 'Perda';
+
+  @override
+  String get saleItemsTitle => 'Itens';
+
+  @override
+  String get addItemButton => 'Adicionar item';
+
+  @override
+  String get selectItemTitle => 'Seleccionar item';
+
+  @override
+  String get removeItemTooltip => 'Remover item';
+
+  @override
+  String get unitPriceLabel => 'Preço unitário';
+
+  @override
+  String lineSubtotalLabel(String amount) {
+    return 'Subtotal: $amount';
+  }
+
+  @override
+  String stockAvailableLabel(String quantity, String unit) {
+    return 'Em estoque: $quantity $unit';
+  }
+
+  @override
+  String get outOfStockLabel => 'Sem estoque';
+
+  @override
+  String get noSellableItemsYet =>
+      'Ainda não há produtos ou serviços activos no catálogo.';
 }

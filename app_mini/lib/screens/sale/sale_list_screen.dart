@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../models/sale_item_model.dart';
 import '../../models/sale_model.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/sale_provider.dart';
 import '../../providers/user_provider.dart';
 import '/widgets/app_sidebar.dart';
+import '/widgets/sale_item_lines.dart';
 import 'package:mini/l10n/app_localizations.dart';
 
 /*Lists finished sales only: every NORMAL sale (always COMPLETED), plus CREDIT sales once they're settled (COMPLETED or CANCELLED). 
@@ -105,8 +107,9 @@ class _SaleListScreenState extends State<SaleListScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final sales = context.watch<SaleProvider>().sales;
-    final isLoading = context.watch<SaleProvider>().isLoading;
+    final saleProvider = context.watch<SaleProvider>();
+    final sales = saleProvider.sales;
+    final isLoading = saleProvider.isLoading;
     final currency = context.watch<UserProvider>().user?.currency ?? 'MZN';
     final amountFormat = NumberFormat('#,##0.00');
 
@@ -114,7 +117,7 @@ class _SaleListScreenState extends State<SaleListScreen> {
       appBar: AppBar(title: Text(l10n.finishedSalesTitle)),
 drawer: AppSidebar(
         currentRoute: '/sale',
-        creditSalesBadgeCount: context.watch<SaleProvider>().outstandingCreditCount,
+        creditSalesBadgeCount: saleProvider.outstandingCreditCount,
       ),
       body: Column(
         children: [
@@ -163,6 +166,7 @@ drawer: AppSidebar(
                             final sale = sales[index];
                             return _SaleListItem(
                               sale: sale,
+                              items: saleProvider.itemsFor(sale.idSale!),
                               customerName: _customerName(sale),
                               currency: currency,
                               amountFormat: amountFormat,
@@ -183,12 +187,16 @@ drawer: AppSidebar(
   }
 }
 
-/* One row in the finished sales list. NORMAL sales render as a plain ListTile.
- CREDIT sales render as an ExpansionTile so they can show how many installments settled the debt, 
- and what each one was (loaded lazily on first expand).*/
+/* One row in the finished sales list.
+ - A NORMAL sale without lines (free sale) renders as a plain ListTile.
+ - A sale with lines renders as an ExpansionTile showing them.
+ - A CREDIT sale always renders as an ExpansionTile: its lines (if any) plus
+   how many installments settled the debt and what each one was (loaded
+   lazily on first expand).*/
 class _SaleListItem extends StatelessWidget {
   const _SaleListItem({
     required this.sale,
+    required this.items,
     required this.customerName,
     required this.currency,
     required this.amountFormat,
@@ -197,6 +205,7 @@ class _SaleListItem extends StatelessWidget {
   });
 
   final SaleModel sale;
+  final List<SaleItemModel> items;
   final String customerName;
   final String currency;
   final NumberFormat amountFormat;
@@ -227,7 +236,7 @@ class _SaleListItem extends StatelessWidget {
       ],
     );
 
-    if (!sale.isCredit) {
+    if (!sale.isCredit && items.isEmpty) {
       return ListTile(
         title: title,
         subtitle: subtitle,
@@ -236,51 +245,65 @@ class _SaleListItem extends StatelessWidget {
       );
     }
 
+    final itemsSection = items.isEmpty
+        ? null
+        : Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: SaleItemLines(
+              title: l10n.saleItemsTitle,
+              items: items,
+              currency: currency,
+            ),
+          );
+
     return ExpansionTile(
       title: title,
       subtitle: subtitle,
       trailing: trailing,
       children: [
-        FutureBuilder<List<SaleInstallmentModel>>(
-          future: context.read<SaleProvider>().installmentsForSale(sale.idSale!),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            final installments = snapshot.data ?? [];
-            if (installments.isEmpty) {
+        if (itemsSection != null) itemsSection,
+        if (sale.isCredit)
+          FutureBuilder<List<SaleInstallmentModel>>(
+            future:
+                context.read<SaleProvider>().installmentsForSale(sale.idSale!),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final installments = snapshot.data ?? [];
+              if (installments.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Text(l10n.noInstallmentsRegistered),
+                );
+              }
               return Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Text(l10n.noInstallmentsRegistered),
-              );
-            }
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    l10n.paidInInstallmentsMessage(installments.length),
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  for (final installment in installments)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Text(
-                        '#${installment.installmentNumber} — '
-                        '${amountFormat.format(installment.paidAmountCents / 100)} $currency'
-                        '${installment.paidAt != null ? ' • ${DateFormat('dd/MM/yyyy').format(installment.paidAt!.toLocal())}' : ''}',
-                      ),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.paidInInstallmentsMessage(installments.length),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                ],
-              ),
-            );
-          },
-        ),
+                    const SizedBox(height: 4),
+                    for (final installment in installments)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(
+                          '#${installment.installmentNumber} — '
+                          '${amountFormat.format(installment.paidAmountCents / 100)} $currency'
+                          '${installment.paidAt != null ? ' • ${DateFormat('dd/MM/yyyy').format(installment.paidAt!.toLocal())}' : ''}',
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
       ],
     );
   }
