@@ -9,6 +9,7 @@ import '../../models/daily_revenue_point.dart';
 import '../../models/sale_model.dart';
 import '../../providers/business_unit_provider.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../providers/report_provider.dart';
 import '../../providers/sale_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/app_sidebar.dart';
@@ -30,12 +31,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DashboardProvider>().loadStats();
       context.read<SaleProvider>().loadOutstandingCreditCount();
+      context.read<ReportProvider>().loadStock();
     });
   }
 
   Future<void> _refresh() async {
     await context.read<DashboardProvider>().loadStats();
     await context.read<SaleProvider>().loadOutstandingCreditCount();
+    await context.read<ReportProvider>().loadStock();
   }
 
   @override
@@ -47,9 +50,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final dashboardProvider = context.watch<DashboardProvider>();
     final saleProvider = context.watch<SaleProvider>();
+    final reportProvider = context.watch<ReportProvider>();
     final hasMultipleUnits = context.watch<BusinessUnitProvider>().hasMultipleUnits;
     final amountFormat = NumberFormat('#,##0.00');
     final isAllStores = dashboardProvider.scope == DashboardScope.allStores;
+
+    /* Stock summary: only for the current store (the consolidated view would
+    mix one store's stock with everyone's sales) and only when the store has
+    products with stock or a low-stock alert. */
+    final stockReport = reportProvider.stockReport;
+    final showStockCard =
+        !isAllStores && stockReport != null && !stockReport.isEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -160,6 +171,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   amountFormat: amountFormat,
                   l10n: l10n,
                 ),
+              if (showStockCard) ...[
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: Icon(
+                      reportProvider.lowStockCount > 0
+                          ? Icons.warning_amber_rounded
+                          : Icons.inventory_2_outlined,
+                      color: reportProvider.lowStockCount > 0
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                    ),
+                    title: Text(l10n.stockTitle),
+                    subtitle: Text(
+                      '${l10n.lowStockFilterLabel(reportProvider.lowStockCount)}\n'
+                      '${l10n.stockValueLabel}: '
+                      '${amountFormat.format(reportProvider.stockValueCents / 100)} $currency',
+                    ),
+                    isThreeLine: true,
+                    trailing: const Icon(Icons.chevron_right),
+                    // The low-stock list lives in Stock (it is no longer a report).
+                    onTap: () =>
+                        Navigator.of(context).pushReplacementNamed('/stock'),
+                  ),
+                ),
+              ],
               if (saleProvider.outstandingCreditCount > 0) ...[
                 const SizedBox(height: 12),
                 Card(

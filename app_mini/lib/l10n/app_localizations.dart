@@ -2147,7 +2147,7 @@ abstract class AppLocalizations {
   /// No description provided for @confirmDeleteCategoryMessage.
   ///
   /// In en, this message translates to:
-  /// **'Delete \"{name}\"? Items in this category will be kept, just without a category.'**
+  /// **'Delete \"{name}\"? Products in this category will be kept, just without a category.'**
   String confirmDeleteCategoryMessage(String name);
 
   /// No description provided for @noCategoriesYet.
@@ -2165,7 +2165,7 @@ abstract class AppLocalizations {
   /// No description provided for @lowStockFilterLabel.
   ///
   /// In en, this message translates to:
-  /// **'Below minimum ({count})'**
+  /// **'Low stock ({count})'**
   String lowStockFilterLabel(int count);
 
   /// No description provided for @belowMinimumLabel.
@@ -2183,7 +2183,7 @@ abstract class AppLocalizations {
   /// No description provided for @noStockItemsYet.
   ///
   /// In en, this message translates to:
-  /// **'No stock-tracked products yet. Turn on \"Track stock\" on a product in the catalog.'**
+  /// **'No products registered yet.'**
   String get noStockItemsYet;
 
   /// No description provided for @noInitialStockLabel.
@@ -2285,7 +2285,7 @@ abstract class AppLocalizations {
   /// No description provided for @stockPurchaseExpenseDescription.
   ///
   /// In en, this message translates to:
-  /// **'Stock purchase: {quantity} × {name}'**
+  /// **'Acquisition: {quantity} × {name}'**
   String stockPurchaseExpenseDescription(String quantity, String name);
 
   /// No description provided for @stockPurchaseTag.
@@ -2333,7 +2333,7 @@ abstract class AppLocalizations {
   /// No description provided for @movementAdjustmentOut.
   ///
   /// In en, this message translates to:
-  /// **'Adjustment (out)'**
+  /// **'Exit (internal use / correction)'**
   String get movementAdjustmentOut;
 
   /// No description provided for @movementLoss.
@@ -2395,6 +2395,340 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No active products or services in the catalog yet.'**
   String get noSellableItemsYet;
+
+  /// No description provided for @reportsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reports'**
+  String get reportsTitle;
+
+  /// No description provided for @lowStockTabLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Low stock'**
+  String get lowStockTabLabel;
+
+  /// No description provided for @stockValueLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock value'**
+  String get stockValueLabel;
+
+  /// No description provided for @marginTabLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Margin'**
+  String get marginTabLabel;
+
+  /// No description provided for @noLowStockItems.
+  ///
+  /// In en, this message translates to:
+  /// **'No products below their minimum stock.'**
+  String get noLowStockItems;
+
+  /// No description provided for @noStockValueYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No stock on hand yet.'**
+  String get noStockValueYet;
+
+  /// No description provided for @itemsWithoutCostNote.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 item has no cost price and is valued at 0.} other{{count} items have no cost price and are valued at 0.}}'**
+  String itemsWithoutCostNote(int count);
+
+  /// No description provided for @noCostLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'No cost set'**
+  String get noCostLabel;
+
+  /// No description provided for @marginNoSalesYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No sales with items in this period.'**
+  String get marginNoSalesYet;
+
+  /// No description provided for @costOfGoodsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cost of goods sold'**
+  String get costOfGoodsLabel;
+
+  /// No description provided for @marginLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Margin'**
+  String get marginLabel;
+
+  /// No description provided for @reportsInfoNote.
+  ///
+  /// In en, this message translates to:
+  /// **'For information only. These figures are not part of the statement balance, which stays cash-based.'**
+  String get reportsInfoNote;
+
+  /// No description provided for @productsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Products'**
+  String get productsTitle;
+
+  /// No description provided for @servicesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Services'**
+  String get servicesTitle;
+
+  /// No description provided for @productCategoriesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Product categories'**
+  String get productCategoriesTitle;
+
+  /// No description provided for @newProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'New product'**
+  String get newProduct;
+
+  /// No description provided for @editProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit product'**
+  String get editProduct;
+
+  /// No description provided for @createProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Create product'**
+  String get createProduct;
+
+  /// No description provided for @newService.
+  ///
+  /// In en, this message translates to:
+  /// **'New service'**
+  String get newService;
+
+  /// No description provided for @editService.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit service'**
+  String get editService;
+
+  /// No description provided for @createService.
+  ///
+  /// In en, this message translates to:
+  /// **'Create service'**
+  String get createService;
+
+  /// No description provided for @noProductsYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No products registered yet.'**
+  String get noProductsYet;
+
+  /// No description provided for @noServicesYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No services registered yet.'**
+  String get noServicesYet;
+
+  /// No description provided for @initialQuantityLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Initial quantity'**
+  String get initialQuantityLabel;
+
+  /// No description provided for @initialQuantityHelperText.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock you already have. No expense is created. For new purchases, create the product and then use \"Move stock\".'**
+  String get initialQuantityHelperText;
+
+  /// No description provided for @serviceUnitHelperText.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. hour, service'**
+  String get serviceUnitHelperText;
+
+  /// No description provided for @moveStockButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Move stock'**
+  String get moveStockButton;
+
+  /// No description provided for @movementEntryOption.
+  ///
+  /// In en, this message translates to:
+  /// **'Entry (purchase)'**
+  String get movementEntryOption;
+
+  /// No description provided for @insufficientStockMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {quantity} {unit} in stock'**
+  String insufficientStockMessage(String quantity, String unit);
+
+  /// No description provided for @cannotDeleteProductWithStockMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This product still has stock. Register an Exit or a Loss first (or set the product inactive).'**
+  String get cannotDeleteProductWithStockMessage;
+
+  /// No description provided for @allTypesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'All types'**
+  String get allTypesLabel;
+
+  /// No description provided for @allProductsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'All products'**
+  String get allProductsLabel;
+
+  /// No description provided for @loadMoreLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Load more'**
+  String get loadMoreLabel;
+
+  /// No description provided for @noLowStockProductsMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'No products with low stock.'**
+  String get noLowStockProductsMessage;
+
+  /// No description provided for @saleDetailTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sale details'**
+  String get saleDetailTitle;
+
+  /// No description provided for @okLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get okLabel;
+
+  /// No description provided for @customItemOption.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom item'**
+  String get customItemOption;
+
+  /// No description provided for @customItemOptionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type a name and a price (no stock)'**
+  String get customItemOptionHint;
+
+  /// No description provided for @customItemDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom item'**
+  String get customItemDialogTitle;
+
+  /// No description provided for @customItemNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Item name'**
+  String get customItemNameLabel;
+
+  /// No description provided for @customItemNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the item name'**
+  String get customItemNameRequired;
+
+  /// No description provided for @customItemTag.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get customItemTag;
+
+  /// No description provided for @outOfStockNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{name}\" is out of stock and cannot be sold.'**
+  String outOfStockNotice(String name);
+
+  /// No description provided for @insufficientStockDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Not enough stock'**
+  String get insufficientStockDialogTitle;
+
+  /// No description provided for @insufficientStockDialogMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Not enough stock of \"{name}\". Only {quantity} {unit} in stock.'**
+  String insufficientStockDialogMessage(
+    String name,
+    String quantity,
+    String unit,
+  );
+
+  /// No description provided for @itemUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Item unavailable'**
+  String get itemUnavailableTitle;
+
+  /// No description provided for @itemUnavailableMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'One of the items is no longer available (it was deactivated or deleted). It is marked in the cart; remove it to continue.'**
+  String get itemUnavailableMessage;
+
+  /// No description provided for @itemUnavailableLine.
+  ///
+  /// In en, this message translates to:
+  /// **'This item is no longer available'**
+  String get itemUnavailableLine;
+
+  /// No description provided for @saleNeedsItemsMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one item to the sale.'**
+  String get saleNeedsItemsMessage;
+
+  /// No description provided for @cartClearedStoreChangedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The store changed, so the items were removed from the sale.'**
+  String get cartClearedStoreChangedMessage;
+
+  /// No description provided for @lossesTabLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Losses'**
+  String get lossesTabLabel;
+
+  /// No description provided for @lossesTotalLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Value of losses'**
+  String get lossesTotalLabel;
+
+  /// No description provided for @noLossesInPeriod.
+  ///
+  /// In en, this message translates to:
+  /// **'No losses in this period.'**
+  String get noLossesInPeriod;
+
+  /// No description provided for @customItemsSalesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom items'**
+  String get customItemsSalesTitle;
+
+  /// No description provided for @customItemsSalesNote.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 line sold} other{{count} lines sold}} without cost. Not included in the margin above.'**
+  String customItemsSalesNote(int count);
 }
 
 class _AppLocalizationsDelegate

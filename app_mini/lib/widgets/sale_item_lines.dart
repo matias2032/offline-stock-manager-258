@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../core/money_utils.dart';
 import '../core/quantity_utils.dart';
+import 'package:mini/l10n/app_localizations.dart';
+
 import '../models/sale_item_model.dart';
 
-/* Read-only list of the lines of a sale (snapshot values). Shared by the
-sales list and the credit sale detail screen. */
+/* Read-only list of the lines of a sale (snapshot values), used by the sale
+detail screen. Custom (free-text) lines carry a small tag. */
 class SaleItemLines extends StatelessWidget {
   const SaleItemLines({
     super.key,
@@ -21,6 +23,7 @@ class SaleItemLines extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final subtle = Theme.of(context).colorScheme.onSurfaceVariant;
+    final l10n = AppLocalizations.of(context)!;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -37,7 +40,15 @@ class SaleItemLines extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(item.itemNameSnapshot),
+                      Row(
+                        children: [
+                          Flexible(child: Text(item.itemNameSnapshot)),
+                          if (item.isCustom) ...[
+                            const SizedBox(width: 6),
+                            _CustomTag(label: l10n.customItemTag),
+                          ],
+                        ],
+                      ),
                       Text(
                         '${QuantityUtils.format(item.quantityMilli)} '
                         '${item.unitSnapshot} × '
@@ -56,6 +67,28 @@ class SaleItemLines extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _CustomTag extends StatelessWidget {
+  const _CustomTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, color: scheme.onSecondaryContainer),
+      ),
     );
   }
 }

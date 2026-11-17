@@ -4,14 +4,19 @@ import '../daos/item_category_dao.dart';
 import '../daos/stock_movement_dao.dart';
 import '../models/catalog_item_model.dart';
 import '../models/item_category_model.dart';
+import '../models/stock_movement_model.dart';
 
 /* Business logic for the catalog: categories, products and services.
 Screens and providers must never talk to the DAOs directly.
 
-Rules enforced here (not in the DB layer):
- - services never track stock;
+Rules enforced here (and, where possible, by CHECKs in the schema):
  - item type is immutable after creation (stock movements depend on it);
- - a category used by an item must belong to the same store;
+ - a product needs a cost greater than zero (single cost, no optional one);
+ - services have no cost, no stock and no category;
+ - a category used by a product must belong to the same store;
+ - a product is created with an optional initial quantity (INITIAL movement,
+   no expense, same transaction);
+ - a product with stock cannot be deleted (zero it first with an adjustment);
  - deleting a category detaches its items instead of deleting them. */
 class CatalogRepository {
   CatalogRepository(
@@ -116,18 +121,19 @@ class CatalogRepository {
     return _itemDao.getItemById(idCatalogItem);
   }
 
+  /* [initialQuantityMilli] (products only) is stock already on the shelf:
+  it creates an INITIAL movement at the product cost, with NO expense, in the
+  same transaction as the item. */
   Future<CatalogItemModel> createItem({
     required int businessUnitId,
     required String itemType,
     required String name,
-    String? code,
     String? description,
     int? categoryId,
     String unit = 'UN',
     required int salePriceCents,
     int costPriceCents = 0,
-    bool trackStock = false,
-    int minStockMilli = 0,
+    int initialQuantityMilli = 0,
   }) async {
     if (itemType != CatalogItemModel.typeProduct &&
         itemType != CatalogItemModel.typeService) {
@@ -140,57 +146,67 @@ class CatalogRepository {
     if (salePriceCents <= 0) {
       throw ArgumentError('Sale price must be greater than zero.');
     }
-    if (costPriceCents < 0) {
-      throw ArgumentError('Cost price cannot be negative.');
-    }
-    if (minStockMilli < 0) {
-      throw ArgumentError('Minimum stock cannot be negative.');
+    if (initialQuantityMilli < 0) {
+      throw ArgumentError('Initial quantity cannot be negative.');
     }
 
     final isProduct = itemType == CatalogItemModel.typeProduct;
-    final cleanCode = _cleanOrNull(code);
-
-    if (cleanCode != null &&
-        await _itemDao.codeExists(
-          businessUnitId: businessUnitId,
-          code: cleanCode,
-        )) {
-      throw ArgumentError('An item with this code already exists.');
+    if (isProduct) {
+      if (costPriceCents <= 0) {
+        throw ArgumentError('Product cost must be greater than zero.');
+      }
+    } else {
+      if (categoryId != null) {
+        throw ArgumentError('Services cannot have a category.');
+      }
+      if (initialQuantityMilli > 0) {
+        throw ArgumentError('Services have no stock.');
+      }
     }
     await _assertCategoryUsable(categoryId, businessUnitId);
 
     final item = CatalogItemModel(
       businessUnitId: businessUnitId,
       itemType: itemType,
-      code: cleanCode,
       name: cleanName,
       description: _cleanOrNull(description),
-      categoryId: categoryId,
+      categoryId: isProduct ? categoryId : null,
       unit: _cleanUnit(unit),
       salePriceCents: salePriceCents,
-      costPriceCents: costPriceCents,
-      // Services never track stock (also enforced by a CHECK in the schema).
-      trackStock: isProduct && trackStock,
-      minStockMilli: isProduct && trackStock ? minStockMilli : 0,
+      costPriceCents: isProduct ? costPriceCents : 0,
       createdAt: DateTime.now(),
     );
 
-    final id = await _itemDao.insertItem(item);
-    return item.copyWith(idCatalogItem: id);
+    return _database.runInTransaction((txn) async {
+      final id = await _itemDao.insertItem(item, txn: txn);
+
+      if (isProduct && initialQuantityMilli > 0) {
+        await _stockMovementDao.insertMovement(
+          StockMovementModel(
+            businessUnitId: businessUnitId,
+            catalogItemId: id,
+            movementType: StockMovementModel.typeInitial,
+            quantityMilli: initialQuantityMilli,
+            unitCostCents: costPriceCents,
+            createdAt: DateTime.now(),
+          ),
+          txn: txn,
+        );
+      }
+      return item.copyWith(idCatalogItem: id);
+    });
   }
 
-  /* The item type is deliberately not editable. */
+  /* The item type is deliberately not editable, and stock is never touched
+  here: it only moves through stock movements. */
   Future<CatalogItemModel> updateItem({
     required int idCatalogItem,
     required String name,
-    String? code,
     String? description,
     int? categoryId,
     String unit = 'UN',
     required int salePriceCents,
     int costPriceCents = 0,
-    bool trackStock = false,
-    int minStockMilli = 0,
   }) async {
     final existing = await _itemDao.getItemById(idCatalogItem);
     if (existing == null) throw StateError('Item not found.');
@@ -203,50 +219,24 @@ class CatalogRepository {
     if (salePriceCents <= 0) {
       throw ArgumentError('Sale price must be greater than zero.');
     }
-    if (costPriceCents < 0) {
-      throw ArgumentError('Cost price cannot be negative.');
-    }
-    if (minStockMilli < 0) {
-      throw ArgumentError('Minimum stock cannot be negative.');
-    }
-
-    final cleanCode = _cleanOrNull(code);
-    if (cleanCode != null &&
-        await _itemDao.codeExists(
-          businessUnitId: existing.businessUnitId,
-          code: cleanCode,
-          excludeId: idCatalogItem,
-        )) {
-      throw ArgumentError('An item with this code already exists.');
+    if (existing.isProduct) {
+      if (costPriceCents <= 0) {
+        throw ArgumentError('Product cost must be greater than zero.');
+      }
+    } else if (categoryId != null) {
+      throw ArgumentError('Services cannot have a category.');
     }
     await _assertCategoryUsable(categoryId, existing.businessUnitId);
 
-    final effectiveTrack = existing.isProduct && trackStock;
-
-    /* Turning tracking off while stock remains would hide that stock from
-    the stock list. Zero it with an adjustment first. */
-    if (existing.trackStock && !effectiveTrack) {
-      final balance = await _stockMovementDao.getBalance(idCatalogItem);
-      if (balance > 0) {
-        throw StateError(
-          'Cannot turn off stock tracking while the item still has stock.',
-        );
-      }
-    }
-
     final updated = existing.copyWith(
       name: cleanName,
-      code: cleanCode,
-      clearCode: cleanCode == null,
       description: _cleanOrNull(description),
       clearDescription: _cleanOrNull(description) == null,
       categoryId: categoryId,
       clearCategoryId: categoryId == null,
       unit: _cleanUnit(unit),
       salePriceCents: salePriceCents,
-      costPriceCents: costPriceCents,
-      trackStock: effectiveTrack,
-      minStockMilli: effectiveTrack ? minStockMilli : 0,
+      costPriceCents: existing.isProduct ? costPriceCents : 0,
     );
 
     await _itemDao.updateItem(updated);
@@ -260,10 +250,23 @@ class CatalogRepository {
     await _itemDao.setActive(idCatalogItem, active);
   }
 
+  /* A product that still has stock cannot be deleted: it would disappear
+  from the stock list while holding units. Give them out (adjustment out or
+  loss) first; meanwhile it can simply be set inactive. */
   Future<void> deleteItem(int idCatalogItem) async {
     final existing = await _itemDao.getItemById(idCatalogItem);
     if (existing == null) throw StateError('Item not found.');
     if (existing.deleted) return;
+
+    if (existing.isProduct) {
+      final balance = await _stockMovementDao.getBalance(idCatalogItem);
+      if (balance > 0) {
+        throw StateError(
+          'Cannot delete a product that still has stock. '
+          'Zero the stock first with an adjustment.',
+        );
+      }
+    }
     await _itemDao.softDeleteItem(idCatalogItem);
   }
 

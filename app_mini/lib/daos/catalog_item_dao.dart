@@ -90,7 +90,7 @@ class CatalogItemDao {
   }
 
   /* businessUnitId is strict scope (mandatory). Filters combine with AND.
-  [search] matches name or code (case-insensitive). */
+  [search] matches the name (case-insensitive). */
   Future<List<CatalogItemModel>> getAllItems({
     required int businessUnitId,
     String? itemType,
@@ -116,9 +116,8 @@ class CatalogItemDao {
       args.add(categoryId);
     }
     if (search != null && search.trim().isNotEmpty) {
-      conditions.add('(name LIKE ? OR code LIKE ?)');
-      final pattern = '%${search.trim()}%';
-      args..add(pattern)..add(pattern);
+      conditions.add('name LIKE ?');
+      args.add('%${search.trim()}%');
     }
 
     final rows = await executor.query(
@@ -130,30 +129,4 @@ class CatalogItemDao {
     return rows.map(CatalogItemModel.fromMap).toList();
   }
 
-  /// Case-insensitive; mirrors the partial unique index uq_catalog_item_code.
-  Future<bool> codeExists({
-    required int businessUnitId,
-    required String code,
-    int? excludeId,
-    Transaction? txn,
-  }) async {
-    final executor = txn ?? await _localDatabase.database;
-    final conditions = <String>[
-      'business_unit_id = ?',
-      'deleted = 0',
-      'code = ? COLLATE NOCASE',
-    ];
-    final args = <Object?>[businessUnitId, code];
-    if (excludeId != null) {
-      conditions.add('id_catalog_item != ?');
-      args.add(excludeId);
-    }
-    final rows = await executor.query(
-      'catalog_item',
-      where: conditions.join(' AND '),
-      whereArgs: args,
-      limit: 1,
-    );
-    return rows.isNotEmpty;
-  }
 }

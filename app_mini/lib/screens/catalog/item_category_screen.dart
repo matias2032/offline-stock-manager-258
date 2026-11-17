@@ -5,9 +5,9 @@ import 'package:mini/l10n/app_localizations.dart';
 import '../../models/item_category_model.dart';
 import '../../providers/catalog_provider.dart';
 
-/* Manages the product/service categories of the active store: list,
-create, rename and delete. Opened from the catalog AppBar, so it keeps a
-back button instead of the sidebar. */
+/* Manages the PRODUCT categories of the active store: list, create, rename
+and delete. Only reachable from the Products screen (AppBar icon), so it
+keeps a back button instead of the sidebar. Services have no categories. */
 class ItemCategoryScreen extends StatefulWidget {
   const ItemCategoryScreen({super.key});
 
@@ -98,7 +98,7 @@ class _ItemCategoryScreenState extends State<ItemCategoryScreen> {
     final categories = provider.categories;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.categoriesLabel)),
+      appBar: AppBar(title: Text(l10n.productCategoriesTitle)),
       body: provider.isLoading && categories.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : categories.isEmpty

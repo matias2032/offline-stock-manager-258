@@ -1,18 +1,47 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:mini/l10n/app_localizations.dart';
 
 import '../core/money_utils.dart';
 import '../core/quantity_utils.dart';
 import '../models/sale_item_model.dart';
+import '../providers/business_unit_provider.dart';
 import '../providers/sale_provider.dart';
 import '../providers/user_provider.dart';
 
-/* Bottom sheet to pick one catalog item for a sale. Lists only active items
-of the store, with search. Tracked products show their balance and are
-disabled when out of stock. Returns the chosen item or null. */
-Future<SellableItem?> showSaleItemPicker(BuildContext context) {
-  return showModalBottomSheet<SellableItem>(
+/* What the picker returns: either a catalog item (with its balance at the
+moment of picking) or a custom line typed by the seller (name, quantity and
+price, no stock, no cost). */
+class SaleItemPickResult {
+  const SaleItemPickResult.catalog(SellableItem this.sellable)
+      : customName = null,
+        customQuantityMilli = null,
+        customPriceCents = null;
+
+  const SaleItemPickResult.custom({
+    required String name,
+    required int quantityMilli,
+    required int priceCents,
+  })  : sellable = null,
+        customName = name,
+        customQuantityMilli = quantityMilli,
+        customPriceCents = priceCents;
+
+  final SellableItem? sellable;
+  final String? customName;
+  final int? customQuantityMilli;
+  final int? customPriceCents;
+
+  bool get isCustom => sellable == null;
+}
+
+/* Bottom sheet to pick one item for a sale. Lists the active items of the
+store, with search. A sold-out product shows a red "Out of stock" tag and,
+when tapped, explains why it cannot be added. The first entry adds a custom
+("avulso") line. Closes itself if the active store changes. */
+Future<SaleItemPickResult?> showSaleItemPicker(BuildContext context) {
+  return showModalBottomSheet<SaleItemPickResult>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -30,9 +59,16 @@ class _SaleItemPickerSheet extends StatefulWidget {
 class _SaleItemPickerSheetState extends State<_SaleItemPickerSheet> {
   final _searchController = TextEditingController();
 
+  late final BusinessUnitProvider _unitProvider;
+  late final int? _initialUnitId;
+
   @override
   void initState() {
     super.initState();
+    _unitProvider = context.read<BusinessUnitProvider>();
+    _initialUnitId = _unitProvider.activeBusinessUnit?.idBusinessUnit;
+    _unitProvider.addListener(_onUnitChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<SaleProvider>().loadSellableItems();
     });
@@ -40,8 +76,47 @@ class _SaleItemPickerSheetState extends State<_SaleItemPickerSheet> {
 
   @override
   void dispose() {
+    _unitProvider.removeListener(_onUnitChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  // Items belong to one store: if it changes, the sheet closes with no result.
+  void _onUnitChanged() {
+    final current = _unitProvider.activeBusinessUnit?.idBusinessUnit;
+    if (current != _initialUnitId && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _pickCustom() async {
+    final result = await showDialog<SaleItemPickResult>(
+      context: context,
+      builder: (_) => const _CustomItemDialog(),
+    );
+    if (result == null || !mounted) return;
+    Navigator.of(context).pop(result);
+  }
+
+  Future<void> _onTapItem(SellableItem sellable) async {
+    if (sellable.isOutOfStock) {
+      final l10n = AppLocalizations.of(context)!;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(l10n.outOfStockLabel),
+          content: Text(l10n.outOfStockNotice(sellable.item.name)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(l10n.okLabel),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).pop(SaleItemPickResult.catalog(sellable));
   }
 
   @override
@@ -89,6 +164,14 @@ class _SaleItemPickerSheetState extends State<_SaleItemPickerSheet> {
                     context.read<SaleProvider>().loadSellableItems(search: value),
               ),
             ),
+            // Always available, even with an empty catalog.
+            ListTile(
+              leading: Icon(Icons.edit_note_outlined, color: colorScheme.primary),
+              title: Text(l10n.customItemOption),
+              subtitle: Text(l10n.customItemOptionHint),
+              onTap: _pickCustom,
+            ),
+            const Divider(height: 1),
             Expanded(
               child: provider.isLoadingSellable && items.isEmpty
                   ? const Center(child: CircularProgressIndicator())
@@ -108,37 +191,80 @@ class _SaleItemPickerSheetState extends State<_SaleItemPickerSheet> {
                           itemBuilder: (context, index) {
                             final sellable = items[index];
                             final item = sellable.item;
-                            final parts = <String>[
-                              item.isProduct
-                                  ? l10n.productLabel
-                                  : l10n.serviceLabel,
-                              if (item.code != null) item.code!,
-                              if (sellable.isOutOfStock)
-                                l10n.outOfStockLabel
-                              else if (sellable.tracksStock)
-                                l10n.stockAvailableLabel(
-                                  QuantityUtils.format(sellable.balanceMilli!),
-                                  item.unit,
-                                ),
-                            ];
+                            final soldOut = sellable.isOutOfStock;
+                            final stockText = (!soldOut && sellable.tracksStock)
+                                ? l10n.stockAvailableLabel(
+                                    QuantityUtils.format(sellable.balanceMilli!),
+                                    item.unit,
+                                  )
+                                : null;
+
                             return ListTile(
-                              enabled: !sellable.isOutOfStock,
                               leading: Icon(
                                 item.isProduct
                                     ? Icons.inventory_2_outlined
                                     : Icons.handyman_outlined,
-                                color: sellable.isOutOfStock
+                                color: soldOut
                                     ? colorScheme.outline
                                     : colorScheme.primary,
                               ),
-                              title: Text(item.name),
-                              subtitle: Text(parts.join(' • ')),
-                              trailing: Text(
-                                '${MoneyUtils.format(item.salePriceCents)} $currency',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
+                              title: Text(
+                                item.name,
+                                style: soldOut
+                                    ? TextStyle(color: colorScheme.outline)
+                                    : null,
                               ),
-                              onTap: () => Navigator.of(context).pop(sellable),
+                              subtitle: Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: item.isProduct
+                                          ? l10n.productLabel
+                                          : l10n.serviceLabel,
+                                    ),
+                                    if (stockText != null)
+                                      TextSpan(
+                                        text: ' • $stockText',
+                                        style: sellable.isLowStock
+                                            ? TextStyle(
+                                                color: colorScheme.error,
+                                                fontWeight: FontWeight.w600,
+                                              )
+                                            : null,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              trailing: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    '${MoneyUtils.format(item.salePriceCents)} $currency',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  if (soldOut)
+                                    Container(
+                                      margin: const EdgeInsets.only(top: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: colorScheme.error,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        l10n.outOfStockLabel,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: colorScheme.onError,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              onTap: () => _onTapItem(sellable),
                             );
                           },
                         ),
@@ -146,6 +272,110 @@ class _SaleItemPickerSheetState extends State<_SaleItemPickerSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/* Asks for the data of a custom line. Returns a SaleItemPickResult.custom.
+The subtotal must be > 0 (the repository rejects anything else, and the
+seller should never see that English message). */
+class _CustomItemDialog extends StatefulWidget {
+  const _CustomItemDialog();
+
+  @override
+  State<_CustomItemDialog> createState() => _CustomItemDialogState();
+}
+
+class _CustomItemDialogState extends State<_CustomItemDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _quantityController = TextEditingController(text: '1');
+  final _priceController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _quantityController.dispose();
+    _priceController.dispose();
+    super.dispose();
+  }
+
+  void _confirm() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.of(context).pop(
+      SaleItemPickResult.custom(
+        name: _nameController.text.trim(),
+        quantityMilli: QuantityUtils.parseToMilli(_quantityController.text),
+        priceCents: MoneyUtils.parseToCents(_priceController.text),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final currency = context.read<UserProvider>().user?.currency ?? 'MZN';
+
+    return AlertDialog(
+      title: Text(l10n.customItemDialogTitle),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                autofocus: true,
+                decoration: InputDecoration(labelText: l10n.customItemNameLabel),
+                validator: (value) => (value ?? '').trim().isEmpty
+                    ? l10n.customItemNameRequired
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _quantityController,
+                decoration: InputDecoration(labelText: l10n.quantityLabel),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                ],
+                validator: (value) =>
+                    (QuantityUtils.tryParseToMilli(value ?? '') ?? 0) <= 0
+                        ? l10n.enterValidQuantityMessage
+                        : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _priceController,
+                decoration:
+                    InputDecoration(labelText: '${l10n.unitPriceLabel} ($currency)'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                validator: (value) {
+                  final cents = MoneyUtils.parseToCents(value ?? '');
+                  final quantity =
+                      QuantityUtils.parseToMilli(_quantityController.text);
+                  return QuantityUtils.lineSubtotalCents(quantity, cents) <= 0
+                      ? l10n.enterValidAmountMessage
+                      : null;
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        TextButton(
+          onPressed: _confirm,
+          child: Text(l10n.addItemButton),
+        ),
+      ],
     );
   }
 }

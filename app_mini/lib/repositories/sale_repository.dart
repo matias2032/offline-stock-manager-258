@@ -1,7 +1,9 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../core/database/local_database.dart';
+import '../core/insufficient_stock_exception.dart';
 import '../core/quantity_utils.dart';
+import '../core/sale_description_utils.dart';
 import '../daos/business_unit_dao.dart';
 import '../daos/catalog_item_dao.dart';
 import '../daos/sale_dao.dart';
@@ -84,19 +86,22 @@ class SaleRepository {
     });
   }
 
-  /* Sale made of catalog lines. Everything happens in one transaction:
-  sale, lines (snapshot) and stock movements, all or nothing.
+  /* Sale made of lines. Everything happens in one transaction: sale, lines
+  (snapshot) and stock movements, all or nothing.
 
   - The total is the sum of the line subtotals, computed here; the UI never
     sends one.
-  - Lines of the same item AND the same requested price are merged (their
-    quantities add up). Same item at different prices stays as separate
-    lines; the balance check still counts both because it reads the ledger
-    inside the transaction.
-  - Every line is validated against the DB: item exists, same store, not
-    deleted, active, quantity > 0.
-  - The description is generated ("2.5× Cable, 1× Delivery"); it is what
-    shows in statements. */
+  - A line is a catalog line (product or service) or a custom line (free
+    name + price, no stock). Catalog lines of the same item AND the same
+    requested price are merged; custom lines are never merged.
+  - Every catalog line is validated against the DB: item exists, same store,
+    not deleted, active, quantity > 0.
+  - Every product has stock: the balance is checked BEFORE writing anything,
+    aggregated per product (two lines of the same product at different
+    prices count together). Not enough stock throws
+    InsufficientStockException.
+  - The description is generated from the names only ("Cable, Delivery"),
+    and is what shows in lists and statements. */
   Future<SaleModel> createSaleWithItems({
     required int businessUnitId,
     required List<SaleLineInput> lines,
@@ -116,46 +121,19 @@ class SaleRepository {
     return _database.runInTransaction((txn) async {
       final prepared = <_PreparedLine>[];
       for (final line in merged) {
-        final item = await _catalogItemDao.getItemById(
-          line.catalogItemId,
-          txn: txn,
+        prepared.add(
+          line.isCustom
+              ? _prepareCustomLine(line)
+              : await _prepareCatalogLine(txn, businessUnitId, line),
         );
-        if (item == null) {
-          throw StateError('Catalog item not found.');
-        }
-        if (item.businessUnitId != businessUnitId) {
-          throw StateError('Item does not belong to the active store.');
-        }
-        if (item.deleted) {
-          throw StateError('"${item.name}" was deleted and cannot be sold.');
-        }
-        if (!item.active) {
-          throw StateError('"${item.name}" is inactive and cannot be sold.');
-        }
-
-        final unitPrice = line.unitPriceCents ?? item.salePriceCents;
-        if (unitPrice <= 0) {
-          throw ArgumentError('Unit price must be greater than zero.');
-        }
-        final subtotal =
-            QuantityUtils.lineSubtotalCents(line.quantityMilli, unitPrice);
-        if (subtotal <= 0) {
-          throw ArgumentError('Line total must be greater than zero.');
-        }
-
-        prepared.add(_PreparedLine(
-          item: item,
-          quantityMilli: line.quantityMilli,
-          unitPriceCents: unitPrice,
-          subtotalCents: subtotal,
-        ));
       }
+
+      await _assertEnoughStock(txn, prepared);
 
       final totalCents =
           prepared.fold<int>(0, (sum, line) => sum + line.subtotalCents);
-      final description = prepared
-          .map((l) => '${QuantityUtils.format(l.quantityMilli)}× ${l.item.name}')
-          .join(', ');
+      final description =
+          SaleDescriptionUtils.fromNames(prepared.map((l) => l.name));
 
       _validateSaleInput(
         description: description,
@@ -182,44 +160,32 @@ class SaleRepository {
 
       for (final line in prepared) {
         final item = line.item;
-        // Snapshot: services carry no cost.
-        final unitCost = item.isProduct ? item.costPriceCents : 0;
 
         await _saleItemDao.insertItem(
           SaleItemModel(
             saleId: sale.idSale!,
-            catalogItemId: item.idCatalogItem!,
-            itemNameSnapshot: item.name,
-            itemTypeSnapshot: item.itemType,
-            unitSnapshot: item.unit,
+            catalogItemId: item?.idCatalogItem,
+            itemNameSnapshot: line.name,
+            itemTypeSnapshot: line.itemType,
+            unitSnapshot: line.unit,
             quantityMilli: line.quantityMilli,
             unitPriceCents: line.unitPriceCents,
-            unitCostCents: unitCost,
+            unitCostCents: line.unitCostCents,
             subtotalCents: line.subtotalCents,
             createdAt: DateTime.now(),
           ),
           txn: txn,
         );
 
-        if (item.isProduct && item.trackStock) {
-          final balance = await _stockMovementDao.getBalance(
-            item.idCatalogItem!,
-            txn: txn,
-          );
-          if (line.quantityMilli > balance) {
-            throw StateError(
-              'Insufficient stock for "${item.name}": balance is '
-              '${QuantityUtils.format(balance)}, requested '
-              '${QuantityUtils.format(line.quantityMilli)}.',
-            );
-          }
+        // Only products move stock; services and custom lines never do.
+        if (item != null && item.isProduct) {
           await _stockMovementDao.insertMovement(
             StockMovementModel(
               businessUnitId: businessUnitId,
               catalogItemId: item.idCatalogItem!,
               movementType: StockMovementModel.typeSale,
               quantityMilli: -line.quantityMilli,
-              unitCostCents: unitCost,
+              unitCostCents: line.unitCostCents,
               saleId: sale.idSale,
               createdAt: DateTime.now(),
             ),
@@ -230,6 +196,107 @@ class SaleRepository {
 
       return sale;
     });
+  }
+
+  /// Custom line: name + price typed by the seller. No item, no stock, no cost.
+  _PreparedLine _prepareCustomLine(SaleLineInput line) {
+    final name = _cleanOrNull(line.customName);
+    if (name == null) {
+      throw ArgumentError('Custom line name cannot be empty.');
+    }
+    final unitPrice = line.unitPriceCents;
+    if (unitPrice == null || unitPrice <= 0) {
+      throw ArgumentError('Unit price must be greater than zero.');
+    }
+    final subtotal =
+        QuantityUtils.lineSubtotalCents(line.quantityMilli, unitPrice);
+    if (subtotal <= 0) {
+      throw ArgumentError('Line total must be greater than zero.');
+    }
+
+    return _PreparedLine(
+      name: name,
+      itemType: SaleItemModel.typeCustom,
+      unit: 'UN',
+      quantityMilli: line.quantityMilli,
+      unitPriceCents: unitPrice,
+      unitCostCents: 0,
+      subtotalCents: subtotal,
+    );
+  }
+
+  /// Catalog line: validated against the DB, snapshotting name/unit/cost.
+  Future<_PreparedLine> _prepareCatalogLine(
+    Transaction txn,
+    int businessUnitId,
+    SaleLineInput line,
+  ) async {
+    final item = await _catalogItemDao.getItemById(
+      line.catalogItemId!,
+      txn: txn,
+    );
+    if (item == null) {
+      throw StateError('Catalog item not found.');
+    }
+    if (item.businessUnitId != businessUnitId) {
+      throw StateError('Item does not belong to the active store.');
+    }
+    if (item.deleted) {
+      throw StateError('"${item.name}" was deleted and cannot be sold.');
+    }
+    if (!item.active) {
+      throw StateError('"${item.name}" is inactive and cannot be sold.');
+    }
+
+    final unitPrice = line.unitPriceCents ?? item.salePriceCents;
+    if (unitPrice <= 0) {
+      throw ArgumentError('Unit price must be greater than zero.');
+    }
+    final subtotal =
+        QuantityUtils.lineSubtotalCents(line.quantityMilli, unitPrice);
+    if (subtotal <= 0) {
+      throw ArgumentError('Line total must be greater than zero.');
+    }
+
+    return _PreparedLine(
+      item: item,
+      name: item.name,
+      itemType: item.itemType,
+      unit: item.unit,
+      quantityMilli: line.quantityMilli,
+      unitPriceCents: unitPrice,
+      // Snapshot of the single product cost; services carry none.
+      unitCostCents: item.isProduct ? item.costPriceCents : 0,
+      subtotalCents: subtotal,
+    );
+  }
+
+  /* Total requested per product vs. its balance, read inside the
+  transaction. Runs before anything is written. */
+  Future<void> _assertEnoughStock(
+    Transaction txn,
+    List<_PreparedLine> lines,
+  ) async {
+    final requested = <int, int>{};
+    final names = <int, String>{};
+    for (final line in lines) {
+      final item = line.item;
+      if (item == null || !item.isProduct) continue;
+      final id = item.idCatalogItem!;
+      requested[id] = (requested[id] ?? 0) + line.quantityMilli;
+      names[id] = item.name;
+    }
+
+    for (final entry in requested.entries) {
+      final balance = await _stockMovementDao.getBalance(entry.key, txn: txn);
+      if (entry.value > balance) {
+        throw InsufficientStockException(
+          itemName: names[entry.key]!,
+          balanceMilli: balance,
+          requestedMilli: entry.value,
+        );
+      }
+    }
   }
 
   /* Cancels a sale: sets sale_status to CANCELLED, auto-cancels its unpaid installments and gives back the stock it consumed.
@@ -464,10 +531,10 @@ class SaleRepository {
     };
 
     return items.map((item) {
-      final tracked = item.isProduct && item.trackStock;
       return SellableItem(
         item: item,
-        balanceMilli: tracked ? (balanceById[item.idCatalogItem!] ?? 0) : null,
+        balanceMilli:
+            item.isProduct ? (balanceById[item.idCatalogItem!] ?? 0) : null,
       );
     }).toList();
   }
@@ -745,9 +812,14 @@ class SaleRepository {
   catalog price). Different prices of the same item stay separate. */
   List<SaleLineInput> _mergeLines(List<SaleLineInput> lines) {
     final merged = <String, SaleLineInput>{};
+    var customIndex = 0;
     for (final line in lines) {
       if (line.quantityMilli <= 0) {
         throw ArgumentError('Quantity must be greater than zero.');
+      }
+      if (line.isCustom) {
+        merged['custom|${customIndex++}'] = line;
+        continue;
       }
       final key = '${line.catalogItemId}|${line.unitPriceCents}';
       final existing = merged[key];
@@ -828,17 +900,25 @@ class SaleRepository {
   }
 }
 
-/// A validated line, ready to be written.
+/* A validated line, ready to be written. [item] is null for custom lines. */
 class _PreparedLine {
   const _PreparedLine({
-    required this.item,
+    this.item,
+    required this.name,
+    required this.itemType,
+    required this.unit,
     required this.quantityMilli,
     required this.unitPriceCents,
+    required this.unitCostCents,
     required this.subtotalCents,
   });
 
-  final CatalogItemModel item;
+  final CatalogItemModel? item;
+  final String name;
+  final String itemType; // 'PRODUCT' | 'SERVICE' | 'CUSTOM'
+  final String unit;
   final int quantityMilli;
   final int unitPriceCents;
+  final int unitCostCents;
   final int subtotalCents;
 }

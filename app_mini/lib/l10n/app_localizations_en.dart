@@ -1144,7 +1144,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String confirmDeleteCategoryMessage(String name) {
-    return 'Delete \"$name\"? Items in this category will be kept, just without a category.';
+    return 'Delete \"$name\"? Products in this category will be kept, just without a category.';
   }
 
   @override
@@ -1155,7 +1155,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String lowStockFilterLabel(int count) {
-    return 'Below minimum ($count)';
+    return 'Low stock ($count)';
   }
 
   @override
@@ -1167,8 +1167,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get noStockItemsYet =>
-      'No stock-tracked products yet. Turn on \"Track stock\" on a product in the catalog.';
+  String get noStockItemsYet => 'No products registered yet.';
 
   @override
   String get noInitialStockLabel => 'No initial stock';
@@ -1222,7 +1221,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String stockPurchaseExpenseDescription(String quantity, String name) {
-    return 'Stock purchase: $quantity × $name';
+    return 'Acquisition: $quantity × $name';
   }
 
   @override
@@ -1248,7 +1247,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get movementAdjustmentIn => 'Adjustment (in)';
 
   @override
-  String get movementAdjustmentOut => 'Adjustment (out)';
+  String get movementAdjustmentOut => 'Exit (internal use / correction)';
 
   @override
   String get movementLoss => 'Loss';
@@ -1284,4 +1283,200 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get noSellableItemsYet =>
       'No active products or services in the catalog yet.';
+
+  @override
+  String get reportsTitle => 'Reports';
+
+  @override
+  String get lowStockTabLabel => 'Low stock';
+
+  @override
+  String get stockValueLabel => 'Stock value';
+
+  @override
+  String get marginTabLabel => 'Margin';
+
+  @override
+  String get noLowStockItems => 'No products below their minimum stock.';
+
+  @override
+  String get noStockValueYet => 'No stock on hand yet.';
+
+  @override
+  String itemsWithoutCostNote(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count items have no cost price and are valued at 0.',
+      one: '1 item has no cost price and is valued at 0.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get noCostLabel => 'No cost set';
+
+  @override
+  String get marginNoSalesYet => 'No sales with items in this period.';
+
+  @override
+  String get costOfGoodsLabel => 'Cost of goods sold';
+
+  @override
+  String get marginLabel => 'Margin';
+
+  @override
+  String get reportsInfoNote =>
+      'For information only. These figures are not part of the statement balance, which stays cash-based.';
+
+  @override
+  String get productsTitle => 'Products';
+
+  @override
+  String get servicesTitle => 'Services';
+
+  @override
+  String get productCategoriesTitle => 'Product categories';
+
+  @override
+  String get newProduct => 'New product';
+
+  @override
+  String get editProduct => 'Edit product';
+
+  @override
+  String get createProduct => 'Create product';
+
+  @override
+  String get newService => 'New service';
+
+  @override
+  String get editService => 'Edit service';
+
+  @override
+  String get createService => 'Create service';
+
+  @override
+  String get noProductsYet => 'No products registered yet.';
+
+  @override
+  String get noServicesYet => 'No services registered yet.';
+
+  @override
+  String get initialQuantityLabel => 'Initial quantity';
+
+  @override
+  String get initialQuantityHelperText =>
+      'Stock you already have. No expense is created. For new purchases, create the product and then use \"Move stock\".';
+
+  @override
+  String get serviceUnitHelperText => 'e.g. hour, service';
+
+  @override
+  String get moveStockButton => 'Move stock';
+
+  @override
+  String get movementEntryOption => 'Entry (purchase)';
+
+  @override
+  String insufficientStockMessage(String quantity, String unit) {
+    return 'Only $quantity $unit in stock';
+  }
+
+  @override
+  String get cannotDeleteProductWithStockMessage =>
+      'This product still has stock. Register an Exit or a Loss first (or set the product inactive).';
+
+  @override
+  String get allTypesLabel => 'All types';
+
+  @override
+  String get allProductsLabel => 'All products';
+
+  @override
+  String get loadMoreLabel => 'Load more';
+
+  @override
+  String get noLowStockProductsMessage => 'No products with low stock.';
+
+  @override
+  String get saleDetailTitle => 'Sale details';
+
+  @override
+  String get okLabel => 'OK';
+
+  @override
+  String get customItemOption => 'Custom item';
+
+  @override
+  String get customItemOptionHint => 'Type a name and a price (no stock)';
+
+  @override
+  String get customItemDialogTitle => 'Custom item';
+
+  @override
+  String get customItemNameLabel => 'Item name';
+
+  @override
+  String get customItemNameRequired => 'Enter the item name';
+
+  @override
+  String get customItemTag => 'Custom';
+
+  @override
+  String outOfStockNotice(String name) {
+    return '\"$name\" is out of stock and cannot be sold.';
+  }
+
+  @override
+  String get insufficientStockDialogTitle => 'Not enough stock';
+
+  @override
+  String insufficientStockDialogMessage(
+    String name,
+    String quantity,
+    String unit,
+  ) {
+    return 'Not enough stock of \"$name\". Only $quantity $unit in stock.';
+  }
+
+  @override
+  String get itemUnavailableTitle => 'Item unavailable';
+
+  @override
+  String get itemUnavailableMessage =>
+      'One of the items is no longer available (it was deactivated or deleted). It is marked in the cart; remove it to continue.';
+
+  @override
+  String get itemUnavailableLine => 'This item is no longer available';
+
+  @override
+  String get saleNeedsItemsMessage => 'Add at least one item to the sale.';
+
+  @override
+  String get cartClearedStoreChangedMessage =>
+      'The store changed, so the items were removed from the sale.';
+
+  @override
+  String get lossesTabLabel => 'Losses';
+
+  @override
+  String get lossesTotalLabel => 'Value of losses';
+
+  @override
+  String get noLossesInPeriod => 'No losses in this period.';
+
+  @override
+  String get customItemsSalesTitle => 'Custom items';
+
+  @override
+  String customItemsSalesNote(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count lines sold',
+      one: '1 line sold',
+    );
+    return '$_temp0 without cost. Not included in the margin above.';
+  }
 }

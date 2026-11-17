@@ -403,6 +403,9 @@ class LocalDatabase {
   // Schema v3 — catalog, sale lines and stock ledger.
   // Quantities are integers in thousandths of the unit (2500 = 2.5), so
   // decimals never touch floating point. See core/quantity_utils.dart.
+  // Every product always has stock (no per-item switch): the balance is
+  // SUM(stock_movement.quantity_milli). Only products have categories.
+  // A sale line may be a "custom" line (CUSTOM snapshot, no catalog item).
   // Order matters (foreign keys): item_category -> catalog_item ->
   // sale_item -> stock_movement.
   static final List<String> _v3Statements = [
@@ -438,7 +441,6 @@ class LocalDatabase {
             REFERENCES business_unit(id_business_unit),
         item_type         TEXT NOT NULL
             CHECK (item_type IN ('PRODUCT','SERVICE')),
-        code              TEXT,
         name              TEXT NOT NULL,
         description       TEXT,
         category_id       INTEGER
@@ -447,24 +449,17 @@ class LocalDatabase {
         sale_price_cents  INTEGER NOT NULL CHECK (sale_price_cents >= 0),
         cost_price_cents  INTEGER NOT NULL DEFAULT 0
             CHECK (cost_price_cents >= 0),
-        track_stock       INTEGER NOT NULL DEFAULT 0
-            CHECK (track_stock IN (0,1)),
-        min_stock_milli   INTEGER NOT NULL DEFAULT 0
-            CHECK (min_stock_milli >= 0),
         active            INTEGER NOT NULL DEFAULT 1,
         deleted           INTEGER NOT NULL DEFAULT 0,
         created_at        TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at        TEXT,
-        CHECK (item_type = 'PRODUCT' OR track_stock = 0)
+        CHECK (item_type = 'PRODUCT' OR category_id IS NULL)
     )
     ''',
     'CREATE INDEX idx_catalog_item_business_unit '
         'ON catalog_item(business_unit_id)',
     'CREATE INDEX idx_catalog_item_category ON catalog_item(category_id)',
     'CREATE INDEX idx_catalog_item_name ON catalog_item(name)',
-    'CREATE UNIQUE INDEX uq_catalog_item_code '
-        'ON catalog_item(business_unit_id, code COLLATE NOCASE) '
-        'WHERE code IS NOT NULL AND deleted = 0',
     '''
     CREATE TRIGGER trg_catalog_item_updated
     AFTER UPDATE ON catalog_item
@@ -480,18 +475,23 @@ class LocalDatabase {
         id_sale_item         INTEGER PRIMARY KEY AUTOINCREMENT,
         sale_id              INTEGER NOT NULL
             REFERENCES sale(id_sale) ON DELETE CASCADE,
-        catalog_item_id      INTEGER NOT NULL
+        catalog_item_id      INTEGER
             REFERENCES catalog_item(id_catalog_item),
         item_name_snapshot   TEXT NOT NULL,
         item_type_snapshot   TEXT NOT NULL
-            CHECK (item_type_snapshot IN ('PRODUCT','SERVICE')),
+        CHECK (item_type_snapshot IN ('PRODUCT','SERVICE','CUSTOM')),
         unit_snapshot        TEXT NOT NULL DEFAULT 'UN',
         quantity_milli       INTEGER NOT NULL CHECK (quantity_milli > 0),
         unit_price_cents     INTEGER NOT NULL CHECK (unit_price_cents >= 0),
         unit_cost_cents      INTEGER NOT NULL DEFAULT 0
             CHECK (unit_cost_cents >= 0),
         subtotal_cents       INTEGER NOT NULL CHECK (subtotal_cents >= 0),
-        created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+        created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+        CHECK (
+            (item_type_snapshot = 'CUSTOM' AND catalog_item_id IS NULL)
+            OR
+            (item_type_snapshot != 'CUSTOM' AND catalog_item_id IS NOT NULL)
+        )
     )
     ''',
     'CREATE INDEX idx_sale_item_sale ON sale_item(sale_id)',

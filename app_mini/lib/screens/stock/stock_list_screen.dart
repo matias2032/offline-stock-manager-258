@@ -9,8 +9,11 @@ import '../../providers/stock_provider.dart';
 import '/widgets/app_sidebar.dart';
 import 'stock_history_screen.dart';
 
-/* Stock overview of the active store: balance per product, a search box and
-a "below minimum" filter. Tapping a row opens its history and actions. */
+/* Read-only stock overview of the active store: balance per product, a
+search box and a "low stock" filter (fixed threshold, see StockRules). No
+prices and no actions: stock only moves from Products ("Move stock") and
+from Sales. Tapping a row opens the movement history filtered by that
+product; the AppBar icon opens the full history. */
 class StockListScreen extends StatefulWidget {
   const StockListScreen({super.key});
 
@@ -37,9 +40,11 @@ class _StockListScreenState extends State<StockListScreen> {
     super.dispose();
   }
 
-  void _openHistory(StockBalanceRow row) {
+  void _openHistory({int? itemId}) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => StockHistoryScreen(row: row)),
+      MaterialPageRoute(
+        builder: (_) => StockHistoryScreen(initialItemId: itemId),
+      ),
     );
   }
 
@@ -53,7 +58,16 @@ class _StockListScreenState extends State<StockListScreen> {
         : provider.rows;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.stockTitle)),
+      appBar: AppBar(
+        title: Text(l10n.stockTitle),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: l10n.stockHistoryTitle,
+            onPressed: () => _openHistory(),
+          ),
+        ],
+      ),
       drawer: AppSidebar(
         currentRoute: '/stock',
         creditSalesBadgeCount:
@@ -105,7 +119,9 @@ class _StockListScreenState extends State<StockListScreen> {
                                 padding:
                                     const EdgeInsets.symmetric(horizontal: 32),
                                 child: Text(
-                                  l10n.noStockItemsYet,
+                                  _onlyLow && provider.rows.isNotEmpty
+                                      ? l10n.noLowStockProductsMessage
+                                      : l10n.noStockItemsYet,
                                   textAlign: TextAlign.center,
                                 ),
                               ),
@@ -120,16 +136,9 @@ class _StockListScreenState extends State<StockListScreen> {
                             final row = rows[index];
                             final item = row.item;
                             final parts = <String>[
-                              if (item.code != null) item.code!,
                               if (item.deleted) l10n.deletedLabel,
                               if (!item.active && !item.deleted)
                                 l10n.inactiveLabel,
-                              if (row.needsInitialStock)
-                                l10n.noInitialStockLabel,
-                              if (item.trackStock && item.minStockMilli > 0)
-                                l10n.stockMinLabel(
-                                  QuantityUtils.format(item.minStockMilli),
-                                ),
                             ];
                             return ListTile(
                               leading: Icon(
@@ -145,13 +154,15 @@ class _StockListScreenState extends State<StockListScreen> {
                                   ? null
                                   : Text(parts.join(' • ')),
                               trailing: Text(
-                                '${QuantityUtils.format(row.balanceMilli)} ${item.unit}',
+                                row.isOutOfStock
+                                    ? l10n.outOfStockLabel
+                                    : '${QuantityUtils.format(row.balanceMilli)} ${item.unit}',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: row.isLow ? colorScheme.error : null,
                                 ),
                               ),
-                              onTap: () => _openHistory(row),
+                              onTap: () => _openHistory(itemId: item.idCatalogItem),
                             );
                           },
                         ),

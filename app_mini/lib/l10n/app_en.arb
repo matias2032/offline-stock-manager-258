@@ -441,14 +441,14 @@
   "renameCategory": "Rename category",
   "categoryNameLabel": "Category name",
   "deleteCategory": "Delete category",
-  "confirmDeleteCategoryMessage": "Delete \"{name}\"? Items in this category will be kept, just without a category.",
+  "confirmDeleteCategoryMessage": "Delete \"{name}\"? Products in this category will be kept, just without a category.",
   "@confirmDeleteCategoryMessage": {
     "placeholders": { "name": { "type": "String" } }
   },
   "noCategoriesYet": "No categories yet.",
 
   "stockTitle": "Stock",
-  "lowStockFilterLabel": "Below minimum ({count})",
+  "lowStockFilterLabel": "Low stock ({count})",
   "@lowStockFilterLabel": {
     "placeholders": { "count": { "type": "int" } }
   },
@@ -457,7 +457,7 @@
   "@stockMinLabel": {
     "placeholders": { "min": { "type": "String" } }
   },
-  "noStockItemsYet": "No stock-tracked products yet. Turn on \"Track stock\" on a product in the catalog.",
+  "noStockItemsYet": "No products registered yet.",
   "noInitialStockLabel": "No initial stock",
   "deletedLabel": "Deleted",
   "stockHistoryTitle": "Stock history",
@@ -477,7 +477,7 @@
   "noteRequiredMessage": "A note is required for this movement",
   "movementTypeLabel": "Movement type",
   "stockMovementSaved": "Movement registered.",
-  "stockPurchaseExpenseDescription": "Stock purchase: {quantity} × {name}",
+  "stockPurchaseExpenseDescription": "Acquisition: {quantity} × {name}",
   "@stockPurchaseExpenseDescription": {
     "placeholders": {
       "quantity": { "type": "String" },
@@ -491,7 +491,7 @@
   "movementSale": "Sale",
   "movementSaleReversal": "Sale reversal",
   "movementAdjustmentIn": "Adjustment (in)",
-  "movementAdjustmentOut": "Adjustment (out)",
+  "movementAdjustmentOut": "Exit (internal use / correction)",
   "movementLoss": "Loss",
 
   "saleItemsTitle": "Items",
@@ -511,5 +511,86 @@
     }
   },
   "outOfStockLabel": "Out of stock",
-  "noSellableItemsYet": "No active products or services in the catalog yet."
+  "noSellableItemsYet": "No active products or services in the catalog yet.",
+
+  "reportsTitle": "Reports",
+  "lowStockTabLabel": "Low stock",
+  "stockValueLabel": "Stock value",
+  "marginTabLabel": "Margin",
+  "noLowStockItems": "No products below their minimum stock.",
+  "noStockValueYet": "No stock on hand yet.",
+  "itemsWithoutCostNote": "{count, plural, =1{1 item has no cost price and is valued at 0.} other{{count} items have no cost price and are valued at 0.}}",
+  "@itemsWithoutCostNote": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "noCostLabel": "No cost set",
+  "marginNoSalesYet": "No sales with items in this period.",
+  "costOfGoodsLabel": "Cost of goods sold",
+  "marginLabel": "Margin",
+  "reportsInfoNote": "For information only. These figures are not part of the statement balance, which stays cash-based.",
+
+  "productsTitle": "Products",
+  "servicesTitle": "Services",
+  "productCategoriesTitle": "Product categories",
+  "newProduct": "New product",
+  "editProduct": "Edit product",
+  "createProduct": "Create product",
+  "newService": "New service",
+  "editService": "Edit service",
+  "createService": "Create service",
+  "noProductsYet": "No products registered yet.",
+  "noServicesYet": "No services registered yet.",
+  "initialQuantityLabel": "Initial quantity",
+  "initialQuantityHelperText": "Stock you already have. No expense is created. For new purchases, create the product and then use \"Move stock\".",
+  "serviceUnitHelperText": "e.g. hour, service",
+  "moveStockButton": "Move stock",
+  "movementEntryOption": "Entry (purchase)",
+  "insufficientStockMessage": "Only {quantity} {unit} in stock",
+  "@insufficientStockMessage": {
+    "placeholders": {
+      "quantity": { "type": "String" },
+      "unit": { "type": "String" }
+    }
+  },
+  "cannotDeleteProductWithStockMessage": "This product still has stock. Register an Exit or a Loss first (or set the product inactive).",
+
+  "allTypesLabel": "All types",
+  "allProductsLabel": "All products",
+  "loadMoreLabel": "Load more",
+  "noLowStockProductsMessage": "No products with low stock.",
+   "saleDetailTitle": "Sale details",
+  "okLabel": "OK",
+  "customItemOption": "Custom item",
+  "customItemOptionHint": "Type a name and a price (no stock)",
+  "customItemDialogTitle": "Custom item",
+  "customItemNameLabel": "Item name",
+  "customItemNameRequired": "Enter the item name",
+  "customItemTag": "Custom",
+  "outOfStockNotice": "\"{name}\" is out of stock and cannot be sold.",
+  "@outOfStockNotice": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "insufficientStockDialogTitle": "Not enough stock",
+  "insufficientStockDialogMessage": "Not enough stock of \"{name}\". Only {quantity} {unit} in stock.",
+  "@insufficientStockDialogMessage": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "quantity": { "type": "String" },
+      "unit": { "type": "String" }
+    }
+  },
+  "itemUnavailableTitle": "Item unavailable",
+  "itemUnavailableMessage": "One of the items is no longer available (it was deactivated or deleted). It is marked in the cart; remove it to continue.",
+  "itemUnavailableLine": "This item is no longer available",
+  "saleNeedsItemsMessage": "Add at least one item to the sale.",
+  "cartClearedStoreChangedMessage": "The store changed, so the items were removed from the sale.",
+
+  "lossesTabLabel": "Losses",
+  "lossesTotalLabel": "Value of losses",
+  "noLossesInPeriod": "No losses in this period.",
+  "customItemsSalesTitle": "Custom items",
+  "customItemsSalesNote": "{count, plural, =1{1 line sold} other{{count} lines sold}} without cost. Not included in the margin above.",
+  "@customItemsSalesNote": {
+    "placeholders": { "count": { "type": "int" } }
+  }
 }

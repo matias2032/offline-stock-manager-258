@@ -37,6 +37,7 @@ export 'repositories/sale_repository.dart';
 export 'repositories/financial_statement_repository.dart';
 export 'repositories/catalog_repository.dart';
 export 'repositories/stock_repository.dart';
+export 'repositories/report_repository.dart';
 
 // Providers
 export 'providers/theme_provider.dart';
@@ -51,6 +52,7 @@ export 'providers/sale_provider.dart';
 export 'providers/financial_statement_provider.dart';
 export 'providers/catalog_provider.dart';
 export 'providers/stock_provider.dart';
+export 'providers/report_provider.dart';
 
 // Screens
 export 'screens/splash/splash_screen.dart';
@@ -72,6 +74,8 @@ export 'screens/sale/financial_statement_generate_screen.dart';
 export 'screens/sale/financial_statement_detail_screen.dart';
 export 'screens/business_unit/business_unit_management_screen.dart';
 export 'screens/settings/backup_screen.dart';
-export 'screens/catalog/catalog_list_screen.dart';
+export 'screens/catalog/product_list_screen.dart';
+export 'screens/catalog/service_list_screen.dart';
 export 'screens/catalog/item_category_screen.dart';
 export 'screens/stock/stock_list_screen.dart';
+export 'screens/report/reports_screen.dart';

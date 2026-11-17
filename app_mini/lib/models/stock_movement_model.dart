@@ -1,3 +1,4 @@
+import '../core/stock_rules.dart';
 import 'catalog_item_model.dart';
 
 /* Pure data class representing a row in the `stock_movement` table.
@@ -99,24 +100,48 @@ class StockBalanceRow {
   final int balanceMilli;
   final int movementCount;
 
-  /// Below (or at) the alert threshold. Only when tracking is on and a minimum is set.
-  bool get isLow =>
-      item.trackStock &&
-      item.minStockMilli > 0 &&
-      balanceMilli <= item.minStockMilli;
+  /// At or below the fixed alert threshold (includes out of stock).
+  bool get isLow => StockRules.isLow(balanceMilli);
 
-  /// Tracking is on but nothing was ever registered.
-  bool get needsInitialStock => item.trackStock && movementCount == 0;
+  /// Balance 0: shown as "Out of stock".
+  bool get isOutOfStock => StockRules.isOutOfStock(balanceMilli);
 
-  /// Purchases and initial stock are only accepted by live, tracked products.
-  bool get canReceiveStock =>
-      item.isProduct && item.trackStock && item.active && !item.deleted;
+  /// Purchases only go to live (active, not deleted) products.
+  bool get canReceiveStock => item.isProduct && item.active && !item.deleted;
 
   factory StockBalanceRow.fromMap(Map<String, Object?> map) {
     return StockBalanceRow(
       item: CatalogItemModel.fromMap(map),
-            balanceMilli: (map['balance_milli'] as num).toInt(),
+      balanceMilli: (map['balance_milli'] as num).toInt(),
       movementCount: (map['movement_count'] as num).toInt(),
+    );
+  }
+}
+
+/* Read model for the global movement history: a movement plus the item name
+and unit (from catalog_item) and, for sales and reversals, the sale
+reference. Built by a JOIN query, never stored. */
+class StockMovementRow {
+  const StockMovementRow({
+    required this.movement,
+    required this.itemName,
+    required this.itemUnit,
+    this.saleReference,
+  });
+
+  final StockMovementModel movement;
+  final String itemName;
+  final String itemUnit;
+
+  /// Only for SALE / SALE_REVERSAL movements.
+  final String? saleReference;
+
+  factory StockMovementRow.fromMap(Map<String, Object?> map) {
+    return StockMovementRow(
+      movement: StockMovementModel.fromMap(map),
+      itemName: map['item_name'] as String,
+      itemUnit: map['item_unit'] as String,
+      saleReference: map['sale_reference'] as String?,
     );
   }
 }

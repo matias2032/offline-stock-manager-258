@@ -1,9 +1,9 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../core/database/local_database.dart';
+import '../core/insufficient_stock_exception.dart';
 import '../core/quantity_utils.dart';
-import '../daos/catalog_item_dao.dart';
-import '../daos/stock_movement_dao.dart';
+import '../daos/catalog_item_dao.dart';import '../daos/stock_movement_dao.dart';
 import '../daos/supplier_dao.dart';
 import '../models/catalog_item_model.dart';
 import '../models/stock_movement_model.dart';
@@ -38,15 +38,30 @@ class StockRepository {
   Future<List<StockBalanceRow>> getBalances({
     required int businessUnitId,
     String? search,
+    int? categoryId,
   }) {
     return _stockMovementDao.getBalances(
       businessUnitId: businessUnitId,
       search: search,
+      categoryId: categoryId,
     );
   }
 
-  Future<List<StockMovementModel>> getMovements(int catalogItemId) {
-    return _stockMovementDao.getMovementsByItem(catalogItemId);
+  /// Global history of the store (read-only), newest first, paged.
+  Future<List<StockMovementRow>> getHistory({
+    required int businessUnitId,
+    int? catalogItemId,
+    String? movementType,
+    int limit = 100,
+    int offset = 0,
+  }) {
+    return _stockMovementDao.getHistory(
+      businessUnitId: businessUnitId,
+      catalogItemId: catalogItemId,
+      movementType: movementType,
+      limit: limit,
+      offset: offset,
+    );
   }
 
   Future<int> getBalance(int catalogItemId) {
@@ -129,60 +144,8 @@ class StockRepository {
     });
   }
 
-  /* Opening stock: no expense. Only allowed while the item has no movements;
-  afterwards use an adjustment. */
-  Future<StockMovementModel> registerInitialStock({
-    required int businessUnitId,
-    required int catalogItemId,
-    required int quantityMilli,
-    int? unitCostCents,
-    String? notes,
-  }) {
-    if (quantityMilli <= 0) {
-      throw ArgumentError('Quantity must be greater than zero.');
-    }
-    if (unitCostCents != null && unitCostCents < 0) {
-      throw ArgumentError('Unit cost cannot be negative.');
-    }
-
-    return _database.runInTransaction((txn) async {
-      final item = await _loadProduct(txn, businessUnitId, catalogItemId);
-      _requireReceivable(item);
-
-      final existing = await _stockMovementDao.countMovements(
-        catalogItemId,
-        txn: txn,
-      );
-      if (existing > 0) {
-        throw StateError(
-          'Initial stock is only allowed for items without movements. '
-          'Use an adjustment instead.',
-        );
-      }
-
-      final cost = (unitCostCents != null && unitCostCents > 0)
-          ? unitCostCents
-          : null;
-
-      final movement = await _insert(
-        txn,
-        StockMovementModel(
-          businessUnitId: item.businessUnitId,
-          catalogItemId: catalogItemId,
-          movementType: StockMovementModel.typeInitial,
-          quantityMilli: quantityMilli,
-          unitCostCents: cost,
-          notes: _cleanNotes(notes),
-          createdAt: DateTime.now(),
-        ),
-      );
-
-      if (cost != null) {
-        await _catalogItemDao.updateCostPrice(catalogItemId, cost, txn: txn);
-      }
-      return movement;
-    });
-  }
+// (nothing: the method was removed; the initial stock only exists in the catalog,
+// in CatalogRepository.createItem)
 
   /* Manual correction. [quantity] is the positive magnitude; the sign comes
   from [movementType]. Outgoing types need a note and can never take the
@@ -220,9 +183,10 @@ class StockRepository {
           txn: txn,
         );
         if (quantityMilli > balance) {
-          throw StateError(
-            'Insufficient stock: balance is ${QuantityUtils.format(balance)}, '
-            'requested ${QuantityUtils.format(quantityMilli)}.',
+          throw InsufficientStockException(
+            itemName: item.name,
+            balanceMilli: balance,
+            requestedMilli: quantityMilli,
           );
         }
       }
@@ -261,7 +225,7 @@ class StockRepository {
     return item;
   }
 
-  /// Purchases and initial stock only go to live, tracked items.
+  /// Purchases and initial stock only go to live (active, not deleted) products.
   void _requireReceivable(CatalogItemModel item) {
     if (item.deleted) {
       throw StateError('Cannot add stock to a deleted item.');
@@ -269,11 +233,8 @@ class StockRepository {
     if (!item.active) {
       throw StateError('Cannot add stock to an inactive item.');
     }
-    if (!item.trackStock) {
-      throw StateError('Stock tracking is turned off for this item.');
-    }
   }
-
+  
   Future<StockMovementModel> _insert(
     Transaction txn,
     StockMovementModel movement,

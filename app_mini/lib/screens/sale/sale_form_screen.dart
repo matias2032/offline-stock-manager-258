@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/money_utils.dart';
 import '../../core/quantity_utils.dart';
 import '../../models/sale_item_model.dart';
+import '../../providers/business_unit_provider.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/sale_provider.dart';
 import '../../providers/user_provider.dart';
@@ -12,18 +13,42 @@ import '/widgets/app_sidebar.dart';
 import '/widgets/sale_item_picker.dart';
 import 'package:mini/l10n/app_localizations.dart';
 
-/* One line of the cart. Holds its own controllers so quantity and price
-stay editable; the subtotal is derived. */
+/* One line of the cart: a catalog item (sellable != null) or a custom line
+typed by the seller (customName != null, no stock). Holds its own controllers
+so quantity and price stay editable; the subtotal is derived.
+
+[sellable] is a snapshot taken when the item was picked (or last refreshed):
+its balance may be out of date, the repository is the final authority.
+[unavailable] is set when a refresh finds the item is no longer sellable. */
 class _CartLine {
-  _CartLine(this.sellable)
-      : quantityController = TextEditingController(text: '1'),
+  _CartLine.catalog(SellableItem this.sellable)
+      : customName = null,
+        quantityController = TextEditingController(text: '1'),
         priceController = TextEditingController(
           text: MoneyUtils.toInputText(sellable.item.salePriceCents),
         );
 
-  final SellableItem sellable;
+  _CartLine.custom({
+    required String name,
+    required int quantityMilli,
+    required int priceCents,
+  })  : sellable = null,
+        customName = name,
+        quantityController =
+            TextEditingController(text: QuantityUtils.toInputText(quantityMilli)),
+        priceController =
+            TextEditingController(text: MoneyUtils.toInputText(priceCents));
+
+  SellableItem? sellable;
+  final String? customName;
+  bool unavailable = false;
   final TextEditingController quantityController;
   final TextEditingController priceController;
+
+  bool get isCustom => sellable == null;
+  int? get catalogItemId => sellable?.item.idCatalogItem;
+  String get name => customName ?? sellable!.item.name;
+  String get unit => sellable?.item.unit ?? 'UN';
 
   int get quantityMilli => QuantityUtils.parseToMilli(quantityController.text);
   int get unitPriceCents => MoneyUtils.parseToCents(priceController.text);
@@ -45,27 +70,24 @@ class SaleFormScreen extends StatefulWidget {
 
 class _SaleFormScreenState extends State<SaleFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _descriptionController = TextEditingController();
-  final _totalAmountController = TextEditingController();
   final _walkInNameController = TextEditingController();
   final _initialPaymentController = TextEditingController();
   final _notesController = TextEditingController();
 
-  /* Fixed rule: with at least one line in the cart the sale is built from
-  the catalog (description and total are computed); with an empty cart it is
-  a free sale (manual description and total), exactly as before. */
+  // A sale is always made of lines; the total is their sum (read only).
   final List<_CartLine> _cart = [];
 
   String _saleType = 'NORMAL';
 
-  /* Customer selection applies to both NORMAL and CREDIT sales now.
+  /* Customer selection applies to both NORMAL and CREDIT sales.
   For NORMAL it's optional; for CREDIT it's required (customer OR walk-in name).*/
   bool _useExistingCustomer = true;
   int? _customerId;
 
   DateTime? _creditDueDate;
 
-  bool get _isItemsMode => _cart.isNotEmpty;
+  late final BusinessUnitProvider _unitProvider;
+  int? _activeUnitId;
 
   int get _cartTotalCents =>
       _cart.fold<int>(0, (sum, line) => sum + line.subtotalCents);
@@ -73,15 +95,19 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
   @override
   void initState() {
     super.initState();
+    _unitProvider = context.read<BusinessUnitProvider>();
+    _activeUnitId = _unitProvider.activeBusinessUnit?.idBusinessUnit;
+    _unitProvider.addListener(_onUnitChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CustomerProvider>().loadCustomers();
+      context.read<SaleProvider>().clearError();
     });
   }
 
   @override
   void dispose() {
-    _descriptionController.dispose();
-    _totalAmountController.dispose();
+    _unitProvider.removeListener(_onUnitChanged);
     _walkInNameController.dispose();
     _initialPaymentController.dispose();
     _notesController.dispose();
@@ -91,11 +117,34 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
     super.dispose();
   }
 
+  /* The cart and the chosen customer belong to the previous store: clear
+  them and say so. */
+  void _onUnitChanged() {
+    final current = _unitProvider.activeBusinessUnit?.idBusinessUnit;
+    if (!mounted || current == _activeUnitId) return;
+    _activeUnitId = current;
+
+    final removed = List<_CartLine>.of(_cart);
+    setState(() {
+      _cart.clear();
+      _customerId = null;
+    });
+    // The fields are still in the tree for this frame: dispose afterwards.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final line in removed) {
+        line.dispose();
+      }
+    });
+
+    final l10n = AppLocalizations.of(context)!;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.cartClearedStoreChangedMessage)),
+    );
+  }
+
   /* True when the user typed or picked anything. Used to decide whether leaving
   the screen (back button or sidebar) must ask for confirmation. */
   bool get _hasUnsavedData =>
-      _descriptionController.text.trim().isNotEmpty ||
-      _totalAmountController.text.trim().isNotEmpty ||
       _walkInNameController.text.trim().isNotEmpty ||
       _initialPaymentController.text.trim().isNotEmpty ||
       _notesController.text.trim().isNotEmpty ||
@@ -150,16 +199,31 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
     if (picked == null || !mounted) return;
 
     setState(() {
-      // Picking the same item again just adds one more unit.
+      final sellable = picked.sellable;
+
+      // Custom line: always a new line.
+      if (sellable == null) {
+        _cart.add(_CartLine.custom(
+          name: picked.customName!,
+          quantityMilli: picked.customQuantityMilli!,
+          priceCents: picked.customPriceCents!,
+        ));
+        return;
+      }
+
+      // Picking the same catalog item again just adds one more unit (and
+      // refreshes the balance snapshot with the one just read).
       for (final line in _cart) {
-        if (line.sellable.item.idCatalogItem == picked.item.idCatalogItem) {
+        if (line.catalogItemId == sellable.item.idCatalogItem) {
+          line.sellable = sellable;
+          line.unavailable = false;
           line.quantityController.text = QuantityUtils.format(
             line.quantityMilli + QuantityUtils.scale,
           );
           return;
         }
       }
-      _cart.add(_CartLine(picked));
+      _cart.add(_CartLine.catalog(sellable));
     });
   }
 
@@ -170,13 +234,134 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => removed.dispose());
   }
 
+  /* Total requested per product (lines of the same product count together,
+  whatever their prices). Custom lines and services never use stock. */
+  Map<int, int> get _requestedByProduct {
+    final requested = <int, int>{};
+    for (final line in _cart) {
+      final item = line.sellable?.item;
+      if (item == null || !item.isProduct) continue;
+      final id = item.idCatalogItem!;
+      requested[id] = (requested[id] ?? 0) + line.quantityMilli;
+    }
+    return requested;
+  }
+
+  /// The known balance when this line's product is requested above it, else null.
+  int? _shortageBalance(_CartLine line, Map<int, int> requested) {
+    final sellable = line.sellable;
+    if (sellable == null || !sellable.item.isProduct) return null;
+    final balance = sellable.balanceMilli;
+    if (balance == null) return null;
+    final total = requested[sellable.item.idCatalogItem!] ?? 0;
+    return total > balance ? balance : null;
+  }
+
+  /* Re-reads the sellable items and refreshes the balance of every catalog
+  line. A line whose item is no longer offered is flagged as unavailable. */
+  Future<void> _refreshCartBalances() async {
+    final provider = context.read<SaleProvider>();
+    await provider.loadSellableItems();
+    if (!mounted) return;
+
+    final fresh = {
+      for (final s in provider.sellableItems) s.item.idCatalogItem: s,
+    };
+    setState(() {
+      for (final line in _cart) {
+        final id = line.catalogItemId;
+        if (id == null) continue;
+        final updated = fresh[id];
+        if (updated == null) {
+          line.unavailable = true;
+        } else {
+          line.sellable = updated;
+          line.unavailable = false;
+        }
+      }
+    });
+  }
+
+  Future<void> _showAlert(String title, String message) {
+    final l10n = AppLocalizations.of(context)!;
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.okLabel),
+          ),
+        ],
+      ),
+    );
+  }
+
+  SaleLineInput _toLineInput(_CartLine line) {
+    if (line.isCustom) {
+      return SaleLineInput.custom(
+        name: line.customName!,
+        quantityMilli: line.quantityMilli,
+        price: line.unitPriceCents,
+      );
+    }
+    return SaleLineInput(
+      catalogItemId: line.catalogItemId!,
+      quantityMilli: line.quantityMilli,
+      unitPriceCents: line.unitPriceCents,
+    );
+  }
+
+  /* Typed failures become localized dialogs; any other error is already
+  shown inline from provider.errorMessage. */
+  Future<void> _handleSubmitFailure(SaleProvider provider) async {
+    final l10n = AppLocalizations.of(context)!;
+
+    final shortage = provider.insufficientStock;
+    if (shortage != null) {
+      var unit = '';
+      for (final line in _cart) {
+        if (line.name == shortage.itemName) {
+          unit = line.unit;
+          break;
+        }
+      }
+      await _showAlert(
+        l10n.insufficientStockDialogTitle,
+        l10n.insufficientStockDialogMessage(
+          shortage.itemName,
+          QuantityUtils.format(shortage.balanceMilli),
+          unit,
+        ),
+      );
+      if (mounted) await _refreshCartBalances();
+      return;
+    }
+
+    if (provider.itemUnavailable) {
+      await _showAlert(
+        l10n.itemUnavailableTitle,
+        l10n.itemUnavailableMessage,
+      );
+      if (mounted) await _refreshCartBalances();
+    }
+  }
+
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context)!;
+
+    if (_cart.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.saleNeedsItemsMessage)),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
-    final l10n = AppLocalizations.of(context)!;
     final isCredit = _saleType == 'CREDIT';
-    final totalCents =
-        _isItemsMode ? _cartTotalCents : _toCents(_totalAmountController.text);
+    final totalCents = _cartTotalCents;
 
     int? initialPaymentCents;
     if (isCredit) {
@@ -186,7 +371,7 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
         );
         return;
       }
-if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
+      if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.enterWalkInNameMessage)),
         );
@@ -207,9 +392,7 @@ if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
         }
         if (entryCents > totalCents) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(l10n.initialPaymentExceedsTotalMessage),
-            ),
+            SnackBar(content: Text(l10n.initialPaymentExceedsTotalMessage)),
           );
           return;
         }
@@ -218,47 +401,23 @@ if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
     }
 
     final provider = context.read<SaleProvider>();
-    final bool success;
-    if (_isItemsMode) {
-      success = await provider.createSaleWithItems(
-        lines: _cart
-            .map((line) => SaleLineInput(
-                  catalogItemId: line.sellable.item.idCatalogItem!,
-                  quantityMilli: line.quantityMilli,
-                  unitPriceCents: line.unitPriceCents,
-                ))
-            .toList(),
-        saleType: _saleType,
-        customerId: _useExistingCustomer ? _customerId : null,
-        walkInCustomerName:
-            !_useExistingCustomer ? _walkInNameController.text : null,
-        creditDueDate: isCredit ? _creditDueDate : null,
-        notes: _notesController.text,
-        initialPaymentCents: initialPaymentCents,
-      );
-    } else {
-      success = await provider.createSale(
-        description: _descriptionController.text,
-        totalAmountCents: totalCents,
-        saleType: _saleType,
-        customerId: _useExistingCustomer ? _customerId : null,
-        walkInCustomerName:
-            !_useExistingCustomer ? _walkInNameController.text : null,
-        creditDueDate: isCredit ? _creditDueDate : null,
-        notes: _notesController.text,
-        initialPaymentCents: initialPaymentCents,
-      );
-    }
+    final success = await provider.createSaleWithItems(
+      lines: _cart.map(_toLineInput).toList(),
+      saleType: _saleType,
+      customerId: _useExistingCustomer ? _customerId : null,
+      walkInCustomerName:
+          !_useExistingCustomer ? _walkInNameController.text : null,
+      creditDueDate: isCredit ? _creditDueDate : null,
+      notes: _notesController.text,
+      initialPaymentCents: initialPaymentCents,
+    );
 
     if (!mounted) return;
 
-    // Stock errors (e.g. insufficient balance) come from the repository.
-    if (!success && _isItemsMode && provider.errorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(provider.errorMessage!)),
-      );
+    if (!success) {
+      await _handleSubmitFailure(provider);
+      return;
     }
-    if (!success) return;
 
     /* Send the user to where the new sale actually lives: NORMAL sales are
     COMPLETED right away (finished sales list), CREDIT sales stay OUTSTANDING
@@ -278,8 +437,42 @@ if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
     _CartLine line,
     int index,
     String currency,
+    Map<int, int> requested,
   ) {
-    final item = line.sellable.item;
+    final colorScheme = Theme.of(context).colorScheme;
+    final shortage = _shortageBalance(line, requested);
+
+    // At most one status line under the name, by priority.
+    Widget? status;
+    if (line.unavailable) {
+      status = Text(
+        l10n.itemUnavailableLine,
+        style: TextStyle(fontSize: 12, color: colorScheme.error),
+      );
+    } else if (shortage != null) {
+      status = Text(
+        l10n.insufficientStockMessage(
+          QuantityUtils.format(shortage),
+          line.unit,
+        ),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: colorScheme.error,
+        ),
+      );
+    } else if (line.sellable != null &&
+        line.sellable!.item.isProduct &&
+        line.sellable!.balanceMilli != null) {
+      status = Text(
+        l10n.stockAvailableLabel(
+          QuantityUtils.format(line.sellable!.balanceMilli!),
+          line.unit,
+        ),
+        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+      );
+    }
+
     return Card(
       key: ObjectKey(line),
       child: Padding(
@@ -290,9 +483,33 @@ if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    item.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          line.name,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      if (line.isCustom) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: colorScheme.secondaryContainer,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            l10n.customItemTag,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colorScheme.onSecondaryContainer,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 IconButton(
@@ -302,17 +519,7 @@ if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
                 ),
               ],
             ),
-            if (line.sellable.tracksStock)
-              Text(
-                l10n.stockAvailableLabel(
-                  QuantityUtils.format(line.sellable.balanceMilli!),
-                  item.unit,
-                ),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
+            if (status != null) status,
             const SizedBox(height: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,7 +528,7 @@ if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
                   child: TextFormField(
                     controller: line.quantityController,
                     decoration: InputDecoration(
-                      labelText: '${l10n.quantityLabel} (${item.unit})',
+                      labelText: '${l10n.quantityLabel} (${line.unit})',
                     ),
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
@@ -343,8 +550,10 @@ if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
                     ),
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
+                    // The subtotal must be > 0, or the repository rejects the line.
                     validator: (value) =>
-                        MoneyUtils.parseToCents(value ?? '') <= 0
+                        MoneyUtils.parseToCents(value ?? '') <= 0 ||
+                                line.subtotalCents <= 0
                             ? l10n.enterValidAmountMessage
                             : null,
                   ),
@@ -376,6 +585,11 @@ if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
     final currency = context.watch<UserProvider>().user?.currency ?? 'MZN';
     final isCredit = _saleType == 'CREDIT';
 
+    final requested = _requestedByProduct;
+    final blocked = _cart.any(
+      (line) => line.unavailable || _shortageBalance(line, requested) != null,
+    );
+
     return PopScope(
       // Back button: only intercepted while there is unsaved data.
       canPop: !_hasUnsavedData,
@@ -393,158 +607,147 @@ if (!_useExistingCustomer && _walkInNameController.text.trim().isEmpty) {
         }
       },
       child: Scaffold(
-      appBar: AppBar(title: Text(l10n.newSaleTitle)),
-      drawer: AppSidebar(
-        currentRoute: '/sale/new',
-        creditSalesBadgeCount: context.watch<SaleProvider>().outstandingCreditCount,
-        onBeforeNavigate: _confirmDiscard,
-      ),
-      body: Form(
-        key: _formKey,
-        // Rebuild on every field change so PopScope.canPop and the cart
-        // total stay up to date.
-        onChanged: () => setState(() {}),
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            Text(
-              l10n.saleItemsTitle,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            for (var i = 0; i < _cart.length; i++)
-              _buildCartLine(l10n, _cart[i], i, currency),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: _addItem,
-                icon: const Icon(Icons.add),
-                label: Text(l10n.addItemButton),
+        appBar: AppBar(title: Text(l10n.newSaleTitle)),
+        drawer: AppSidebar(
+          currentRoute: '/sale/new',
+          creditSalesBadgeCount:
+              context.watch<SaleProvider>().outstandingCreditCount,
+          onBeforeNavigate: _confirmDiscard,
+        ),
+        body: Form(
+          key: _formKey,
+          // Rebuild on every field change so PopScope.canPop, the live stock
+          // alerts and the cart total stay up to date.
+          onChanged: () => setState(() {}),
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              Text(
+                l10n.saleItemsTitle,
+                style: Theme.of(context).textTheme.titleMedium,
               ),
-            ),
-            const SizedBox(height: 16),
-            if (_isItemsMode)
+              const SizedBox(height: 8),
+              for (var i = 0; i < _cart.length; i++)
+                _buildCartLine(l10n, _cart[i], i, currency, requested),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: _addItem,
+                  icon: const Icon(Icons.add),
+                  label: Text(l10n.addItemButton),
+                ),
+              ),
+              const SizedBox(height: 16),
               Text(
                 '${l10n.totalLabel}: ${MoneyUtils.format(_cartTotalCents)} $currency',
                 style:
                     const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              )
-            else ...[
-              TextFormField(
-                controller: _descriptionController,
-                decoration: InputDecoration(labelText: l10n.descriptionLabel),
-                validator: (value) => (value == null || value.trim().isEmpty)
-                    ? l10n.descriptionRequiredMessage
-                    : null,
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _totalAmountController,
-                decoration: InputDecoration(labelText: l10n.totalAmountLabel),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                validator: (value) {
-                  final cents = _toCents(value ?? '');
-                  return cents <= 0 ? l10n.enterValidAmountMessage : null;
-                },
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(value: 'NORMAL', label: Text(l10n.normalLabel)),
+                  ButtonSegment(value: 'CREDIT', label: Text(l10n.creditLabel)),
+                ],
+                selected: {_saleType},
+                onSelectionChanged: (selection) =>
+                    setState(() => _saleType = selection.first),
               ),
-            ],
-            const SizedBox(height: 16),
-            SegmentedButton<String>(
-              segments: [
-                ButtonSegment(value: 'NORMAL', label: Text(l10n.normalLabel)),
-                ButtonSegment(value: 'CREDIT', label: Text(l10n.creditLabel)),
-              ],
-              selected: {_saleType},
-              onSelectionChanged: (selection) =>
-                  setState(() => _saleType = selection.first),
-            ),
-            const SizedBox(height: 16),
-            /* Customer picker: available for every sale, not just credit.
-            For NORMAL sales it's optional — leaving it unset just means a walk-in sale with no customer on record.*/
-            
-            SwitchListTile(
-              title: Text(isCredit
-                  ? l10n.useExistingCustomerLabel
-                  : l10n.associateExistingCustomerOptionalLabel),
-              value: _useExistingCustomer,
-              onChanged: (value) => setState(() => _useExistingCustomer = value),
-            ),
-            if (_useExistingCustomer)
-              DropdownButtonFormField<int>(
-                value: _customerId,
-                decoration: InputDecoration(labelText: l10n.customerLabel),
-                items: customers
-                    .map((customer) => DropdownMenuItem(
-                          value: customer.idCustomer,
-                          child: Text(customer.name),
-                        ))
-                    .toList(),
-                onChanged: (value) => setState(() => _customerId = value),
-              )
-            else if (isCredit)
-              TextFormField(
-                controller: _walkInNameController,
-                decoration: InputDecoration(labelText: l10n.walkInCustomerNameLabel),
+              const SizedBox(height: 16),
+              /* Customer picker: available for every sale, not just credit.
+              For NORMAL sales it's optional — leaving it unset just means a walk-in sale with no customer on record.*/
+              SwitchListTile(
+                title: Text(isCredit
+                    ? l10n.useExistingCustomerLabel
+                    : l10n.associateExistingCustomerOptionalLabel),
+                value: _useExistingCustomer,
+                onChanged: (value) =>
+                    setState(() => _useExistingCustomer = value),
               ),
-            if (isCredit) ...[
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: _creditDueDate == null
-                    ? TextButton.icon(
-                        onPressed: _pickCreditDueDate,
-                        icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                        label: Text(l10n.addDueDateOptionalLabel),
-                      )
-                    : InputChip(
-                        avatar: const Icon(Icons.calendar_today_outlined, size: 16),
-                        label: Text(
-                          l10n.dueDatePrefix(
-                            '${_creditDueDate!.toLocal()}'.split(' ').first,
+              if (_useExistingCustomer)
+                DropdownButtonFormField<int>(
+                  key: ValueKey('customer-$_activeUnitId-${customers.length}'),
+                  initialValue: _customerId,
+                  decoration: InputDecoration(labelText: l10n.customerLabel),
+                  items: customers
+                      .map((customer) => DropdownMenuItem(
+                            value: customer.idCustomer,
+                            child: Text(customer.name),
+                          ))
+                      .toList(),
+                  onChanged: (value) => setState(() => _customerId = value),
+                )
+              else if (isCredit)
+                TextFormField(
+                  controller: _walkInNameController,
+                  decoration:
+                      InputDecoration(labelText: l10n.walkInCustomerNameLabel),
+                ),
+              if (isCredit) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _creditDueDate == null
+                      ? TextButton.icon(
+                          onPressed: _pickCreditDueDate,
+                          icon: const Icon(Icons.calendar_today_outlined,
+                              size: 16),
+                          label: Text(l10n.addDueDateOptionalLabel),
+                        )
+                      : InputChip(
+                          avatar: const Icon(Icons.calendar_today_outlined,
+                              size: 16),
+                          label: Text(
+                            l10n.dueDatePrefix(
+                              '${_creditDueDate!.toLocal()}'.split(' ').first,
+                            ),
                           ),
+                          onDeleted: () =>
+                              setState(() => _creditDueDate = null),
                         ),
-                        onDeleted: () => setState(() => _creditDueDate = null),
-                      ),
-              ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _initialPaymentController,
+                  decoration: InputDecoration(
+                    labelText: l10n.initialPaymentOptionalLabel,
+                    helperText: l10n.initialPaymentHelperText,
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ],
               const SizedBox(height: 16),
               TextFormField(
-                controller: _initialPaymentController,
-                decoration: InputDecoration(
-                  labelText: l10n.initialPaymentOptionalLabel,
-                  helperText: l10n.initialPaymentHelperText,
+                controller: _notesController,
+                decoration: InputDecoration(labelText: l10n.notesOptionalLabel),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+              if (errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    errorMessage,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
                 ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ElevatedButton(
+                // Blocked while a line asks for more than the known balance
+                // or points to an item that is no longer sellable.
+                onPressed: (isLoading || blocked) ? null : _submit,
+                child: isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(l10n.createSaleButton),
               ),
             ],
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _notesController,
-              decoration: InputDecoration(labelText: l10n.notesOptionalLabel),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 16),
-            if (errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  errorMessage,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ),
-            ElevatedButton(
-              onPressed: isLoading ? null : _submit,
-              child: isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(l10n.createSaleButton),
-            ),
-          ],
+          ),
         ),
-      ),
       ),
     );
   }

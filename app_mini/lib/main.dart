@@ -100,6 +100,10 @@ class MyApp extends StatelessWidget {
       supplierDao,
       expenseRepository,
     );
+
+    // Read-only reports (low stock, stock value, margin per item).
+    final reportRepository = ReportRepository(stockMovementDao, saleItemDao);
+
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
@@ -170,6 +174,13 @@ ChangeNotifierProvider(create: (_) => UserProvider(userRepository)),
           ),
           update: (_, __, previous) => previous!,
         ),
+        ChangeNotifierProxyProvider<BusinessUnitProvider, ReportProvider>(
+          create: (context) => ReportProvider(
+            reportRepository,
+            context.read<BusinessUnitProvider>(),
+          ),
+          update: (_, __, previous) => previous!,
+        ),
       ],
       child: Consumer2<ThemeProvider, LocaleProvider>(
         builder: (context, themeProvider, localeProvider, _) => MaterialApp(
@@ -194,9 +205,11 @@ ChangeNotifierProvider(create: (_) => UserProvider(userRepository)),
             '/sale': (_) => const SaleListScreen(),
             '/sale/new': (_) => const SaleFormScreen(),
             '/credit-sale': (_) => const CreditSaleListScreen(),
-            '/catalog': (_) => const CatalogListScreen(),
-            '/catalog/categories': (_) => const ItemCategoryScreen(),
+            '/products': (_) => const ProductListScreen(),
+            '/products/categories': (_) => const ItemCategoryScreen(),
+            '/services': (_) => const ServiceListScreen(),
             '/stock': (_) => const StockListScreen(),
+            '/reports': (_) => const ReportsScreen(),
             '/sale/financial-statement': (_) => const FinancialStatementListScreen(),
             '/sale/financial-statement/generate': (_) =>
                 const FinancialStatementGenerateScreen(),

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../core/insufficient_stock_exception.dart';
 import '../models/sale_item_model.dart';
 import '../models/sale_model.dart';
 import '../repositories/sale_repository.dart';
@@ -33,6 +34,16 @@ class SaleProvider extends ChangeNotifier {
   // sale form does not flicker while the user searches).
   List<SellableItem> _sellableItems = [];
   bool _isLoadingSellable = false;
+
+  /// Incremented on every picker load; a response for an older request
+  /// (or a previous store) is discarded.
+  int _sellableRequest = 0;
+
+  /* Typed failures of createSaleWithItems, so the UI can show localized
+  dialogs instead of the English text of the exception. Both are reset at
+  the start of every attempt. */
+  InsufficientStockException? _insufficientStock;
+  bool _itemUnavailable = false;
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -73,6 +84,16 @@ class SaleProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   int get outstandingCreditCount => _outstandingCreditCount;
+  InsufficientStockException? get insufficientStock => _insufficientStock;
+  bool get itemUnavailable => _itemUnavailable;
+
+  /// Clears any stale error (and typed failure) when a form screen opens.
+  void clearError() {
+    _errorMessage = null;
+    _insufficientStock = null;
+    _itemUnavailable = false;
+    notifyListeners();
+  }
 
   /// Lines of a sale of the main list (empty for free sales).
   List<SaleItemModel> itemsFor(int saleId) =>
@@ -205,7 +226,7 @@ class SaleProvider extends ChangeNotifier {
     }
   }
 
-  /// Sale made of catalog lines; the total is computed by the repository.
+  /// Sale made of lines (catalog and custom); the total is computed by the repository.
   Future<bool> createSaleWithItems({
     required List<SaleLineInput> lines,
     String saleType = 'NORMAL',
@@ -223,6 +244,8 @@ class SaleProvider extends ChangeNotifier {
       return false;
     }
 
+    _insufficientStock = null;
+    _itemUnavailable = false;
     _setLoading(true);
     try {
       await _saleRepository.createSaleWithItems(
@@ -241,6 +264,16 @@ class SaleProvider extends ChangeNotifier {
       await loadOutstandingCreditCount();
       _errorMessage = null;
       return true;
+    } on InsufficientStockException catch (error) {
+      _insufficientStock = error;
+      _errorMessage = null;
+      return false;
+    } on StateError {
+      /* Here a StateError means a line's item is missing, deleted, inactive
+      or from another store. The UI explains it in the active language. */
+      _itemUnavailable = true;
+      _errorMessage = null;
+      return false;
     } catch (error) {
       _errorMessage = error.toString();
       return false;
@@ -261,6 +294,7 @@ class SaleProvider extends ChangeNotifier {
       );
       await _refreshSales();
       if (_creditSalesLoaded) await _refreshCreditSales();
+      await loadOutstandingCreditCount();
       if (_currentSaleId == saleId) {
         await _refreshSaleDetail(saleId);
       }
@@ -290,6 +324,7 @@ class SaleProvider extends ChangeNotifier {
       );
       await _refreshSales();
       if (_creditSalesLoaded) await _refreshCreditSales();
+      await loadOutstandingCreditCount();
       if (_currentSaleId == saleId) {
         await _refreshSaleDetail(saleId);
       }
@@ -308,6 +343,11 @@ class SaleProvider extends ChangeNotifier {
   this same saleId keep this data in sync automatically. */
   Future<void> loadSaleDetail(int saleId) async {
     _currentSaleId = saleId;
+    // Drop what belongs to the previously opened sale so it never flashes.
+    _currentSale = null;
+    _installments = [];
+    _payments = [];
+    _currentSaleItems = [];
     _setLoading(true);
     try {
       await _refreshSaleDetail(saleId);
@@ -323,8 +363,10 @@ class SaleProvider extends ChangeNotifier {
   store, tracked products with their balance). */
   Future<void> loadSellableItems({String? search}) async {
     final unitId = _activeUnitId;
+    final request = ++_sellableRequest;
     if (unitId == null) {
       _sellableItems = [];
+      _isLoadingSellable = false;
       notifyListeners();
       return;
     }
@@ -332,15 +374,20 @@ class SaleProvider extends ChangeNotifier {
     _isLoadingSellable = true;
     notifyListeners();
     try {
-      _sellableItems = await _saleRepository.getSellableItems(
+      final items = await _saleRepository.getSellableItems(
         businessUnitId: unitId,
         search: search,
       );
+      if (request != _sellableRequest) return;
+      _sellableItems = items;
     } catch (error) {
+      if (request != _sellableRequest) return;
       _errorMessage = error.toString();
     } finally {
-      _isLoadingSellable = false;
-      notifyListeners();
+      if (request == _sellableRequest) {
+        _isLoadingSellable = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -403,17 +450,13 @@ class SaleProvider extends ChangeNotifier {
     _currentSaleItems = await _saleRepository.getSaleItems(saleId);
   }
 
-/* Standalone lookup of a sale's installments, independent from the
-  loadSaleDetail/_currentSale flow. Meant to be called per-row from a
-  FutureBuilder, so it never touches isLoading/errorMessage or detail-screen state. */
-  Future<List<SaleInstallmentModel>> installmentsForSale(int saleId) {
-    return _saleRepository.getInstallmentsBySale(saleId);
-  }
 
 /* Reloads every unit-scoped list/stat currently in use when the
   active business unit changes. Detail state (_currentSale, etc.) is
   intentionally left untouched. */
   void _onActiveUnitChanged() {
+    _sellableRequest++; // discards any in-flight picker load
+    _sellableItems = [];
     loadSales(
       customerId: _lastCustomerId,
       saleType: _lastSaleType,

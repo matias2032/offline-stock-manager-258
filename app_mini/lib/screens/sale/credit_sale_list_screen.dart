@@ -5,7 +5,7 @@ import '../../models/sale_model.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/sale_provider.dart';
 import '../../providers/user_provider.dart';
-import 'credit_sale_detail_screen.dart';
+import 'sale_detail_screen.dart';
 import '/widgets/app_sidebar.dart';
 import 'package:mini/l10n/app_localizations.dart';
 
@@ -112,10 +112,14 @@ class _CreditSaleListScreenState extends State<CreditSaleListScreen> {
                           await Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) =>
-                                  CreditSaleDetailScreen(saleId: sale.idSale!),
+                                  SaleDetailScreen(saleId: sale.idSale!),
                             ),
                           );
-                          if (context.mounted) await _refresh();
+                          if (!context.mounted) return;
+                          context
+                              .read<SaleProvider>()
+                              .loadOutstandingCreditCount();
+                          await _refresh();
                         },
                       );
                     },

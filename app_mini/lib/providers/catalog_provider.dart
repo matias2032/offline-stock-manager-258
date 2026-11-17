@@ -139,55 +139,45 @@ class CatalogProvider extends ChangeNotifier {
   Future<bool> createItem({
     required String itemType,
     required String name,
-    String? code,
     String? description,
     int? categoryId,
     String unit = 'UN',
     required int salePriceCents,
     int costPriceCents = 0,
-    bool trackStock = false,
-    int minStockMilli = 0,
+    int initialQuantityMilli = 0,
   }) =>
       _mutate(
         (unitId) => _repository.createItem(
           businessUnitId: unitId,
           itemType: itemType,
           name: name,
-          code: code,
           description: description,
           categoryId: categoryId,
           unit: unit,
           salePriceCents: salePriceCents,
           costPriceCents: costPriceCents,
-          trackStock: trackStock,
-          minStockMilli: minStockMilli,
+          initialQuantityMilli: initialQuantityMilli,
         ),
       );
 
   Future<bool> updateItem({
     required int idCatalogItem,
     required String name,
-    String? code,
     String? description,
     int? categoryId,
     String unit = 'UN',
     required int salePriceCents,
     int costPriceCents = 0,
-    bool trackStock = false,
-    int minStockMilli = 0,
   }) =>
       _mutate(
         (_) => _repository.updateItem(
           idCatalogItem: idCatalogItem,
           name: name,
-          code: code,
           description: description,
           categoryId: categoryId,
           unit: unit,
           salePriceCents: salePriceCents,
           costPriceCents: costPriceCents,
-          trackStock: trackStock,
-          minStockMilli: minStockMilli,
         ),
       );
 

@@ -1162,7 +1162,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String confirmDeleteCategoryMessage(String name) {
-    return 'Eliminar \"$name\"? Os itens desta categoria são mantidos, apenas ficam sem categoria.';
+    return 'Eliminar \"$name\"? Os produtos desta categoria são mantidos, apenas ficam sem categoria.';
   }
 
   @override
@@ -1173,7 +1173,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String lowStockFilterLabel(int count) {
-    return 'Abaixo do mínimo ($count)';
+    return 'Estoque baixo ($count)';
   }
 
   @override
@@ -1185,8 +1185,7 @@ class AppLocalizationsPt extends AppLocalizations {
   }
 
   @override
-  String get noStockItemsYet =>
-      'Ainda não há produtos com controlo de estoque. Active \"Controlar estoque\" num produto do catálogo.';
+  String get noStockItemsYet => 'Ainda não há produtos registados.';
 
   @override
   String get noInitialStockLabel => 'Sem estoque inicial';
@@ -1240,7 +1239,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String stockPurchaseExpenseDescription(String quantity, String name) {
-    return 'Compra de estoque: $quantity × $name';
+    return 'Aquisição: $quantity × $name';
   }
 
   @override
@@ -1266,7 +1265,7 @@ class AppLocalizationsPt extends AppLocalizations {
   String get movementAdjustmentIn => 'Ajuste (entrada)';
 
   @override
-  String get movementAdjustmentOut => 'Ajuste (saída)';
+  String get movementAdjustmentOut => 'Saída (uso interno/correcção)';
 
   @override
   String get movementLoss => 'Perda';
@@ -1297,9 +1296,205 @@ class AppLocalizationsPt extends AppLocalizations {
   }
 
   @override
-  String get outOfStockLabel => 'Sem estoque';
+  String get outOfStockLabel => 'Esgotado';
 
   @override
   String get noSellableItemsYet =>
       'Ainda não há produtos ou serviços activos no catálogo.';
+
+  @override
+  String get reportsTitle => 'Relatórios';
+
+  @override
+  String get lowStockTabLabel => 'Estoque baixo';
+
+  @override
+  String get stockValueLabel => 'Valor em estoque';
+
+  @override
+  String get marginTabLabel => 'Margem';
+
+  @override
+  String get noLowStockItems => 'Nenhum produto abaixo do estoque mínimo.';
+
+  @override
+  String get noStockValueYet => 'Ainda não há estoque disponível.';
+
+  @override
+  String itemsWithoutCostNote(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count itens sem preço de custo, avaliados em 0.',
+      one: '1 item sem preço de custo, avaliado em 0.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get noCostLabel => 'Sem custo definido';
+
+  @override
+  String get marginNoSalesYet => 'Sem vendas com itens neste período.';
+
+  @override
+  String get costOfGoodsLabel => 'Custo das mercadorias vendidas';
+
+  @override
+  String get marginLabel => 'Margem';
+
+  @override
+  String get reportsInfoNote =>
+      'Apenas informativo. Estes valores não entram no saldo do extracto, que continua em base de caixa.';
+
+  @override
+  String get productsTitle => 'Produtos';
+
+  @override
+  String get servicesTitle => 'Serviços';
+
+  @override
+  String get productCategoriesTitle => 'Categorias de produtos';
+
+  @override
+  String get newProduct => 'Novo produto';
+
+  @override
+  String get editProduct => 'Editar produto';
+
+  @override
+  String get createProduct => 'Criar produto';
+
+  @override
+  String get newService => 'Novo serviço';
+
+  @override
+  String get editService => 'Editar serviço';
+
+  @override
+  String get createService => 'Criar serviço';
+
+  @override
+  String get noProductsYet => 'Ainda não há produtos registados.';
+
+  @override
+  String get noServicesYet => 'Ainda não há serviços registados.';
+
+  @override
+  String get initialQuantityLabel => 'Quantidade inicial';
+
+  @override
+  String get initialQuantityHelperText =>
+      'Estoque que já tem. Não cria despesa. Para compras novas, crie o produto e use \"Movimentar estoque\".';
+
+  @override
+  String get serviceUnitHelperText => 'Ex.: hora, serviço';
+
+  @override
+  String get moveStockButton => 'Movimentar estoque';
+
+  @override
+  String get movementEntryOption => 'Entrada (compra)';
+
+  @override
+  String insufficientStockMessage(String quantity, String unit) {
+    return 'Só há $quantity $unit em estoque';
+  }
+
+  @override
+  String get cannotDeleteProductWithStockMessage =>
+      'Este produto ainda tem estoque. Registe primeiro uma Saída ou uma Perda (ou desactive o produto).';
+
+  @override
+  String get allTypesLabel => 'Todos os tipos';
+
+  @override
+  String get allProductsLabel => 'Todos os produtos';
+
+  @override
+  String get loadMoreLabel => 'Carregar mais';
+
+  @override
+  String get noLowStockProductsMessage => 'Nenhum produto com estoque baixo.';
+
+  @override
+  String get saleDetailTitle => 'Detalhe da venda';
+
+  @override
+  String get okLabel => 'OK';
+
+  @override
+  String get customItemOption => 'Item avulso';
+
+  @override
+  String get customItemOptionHint => 'Indique nome e preço (sem estoque)';
+
+  @override
+  String get customItemDialogTitle => 'Item avulso';
+
+  @override
+  String get customItemNameLabel => 'Nome do item';
+
+  @override
+  String get customItemNameRequired => 'Indique o nome do item';
+
+  @override
+  String get customItemTag => 'Avulso';
+
+  @override
+  String outOfStockNotice(String name) {
+    return '\"$name\" está esgotado e não pode ser vendido.';
+  }
+
+  @override
+  String get insufficientStockDialogTitle => 'Estoque insuficiente';
+
+  @override
+  String insufficientStockDialogMessage(
+    String name,
+    String quantity,
+    String unit,
+  ) {
+    return 'Não há estoque suficiente de \"$name\". Só há $quantity $unit em estoque.';
+  }
+
+  @override
+  String get itemUnavailableTitle => 'Item indisponível';
+
+  @override
+  String get itemUnavailableMessage =>
+      'Um dos itens deixou de estar disponível (foi desactivado ou eliminado). Está assinalado no carrinho; remova-o para continuar.';
+
+  @override
+  String get itemUnavailableLine => 'Este item deixou de estar disponível';
+
+  @override
+  String get saleNeedsItemsMessage => 'Adicione pelo menos um item à venda.';
+
+  @override
+  String get cartClearedStoreChangedMessage =>
+      'A loja mudou, por isso os itens foram removidos da venda.';
+
+  @override
+  String get lossesTabLabel => 'Perdas';
+
+  @override
+  String get lossesTotalLabel => 'Valor das perdas';
+
+  @override
+  String get noLossesInPeriod => 'Sem perdas neste período.';
+
+  @override
+  String get customItemsSalesTitle => 'Itens avulsos';
+
+  @override
+  String customItemsSalesNote(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count linhas vendidas',
+      one: '1 linha vendida',
+    );
+    return '$_temp0 sem custo. Não entram na margem acima.';
+  }
 }
