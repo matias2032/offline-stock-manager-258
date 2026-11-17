@@ -10,7 +10,7 @@ import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'app_imports.dart';
 
 // Debug switch: set to true to wipe local database on every startup.
-const bool _debugResetDatabaseOnStart = true;
+const bool _debugResetDatabaseOnStart = false;
 
 // Single instance: MaterialApp can rebuild (theme/locale) without re-attaching a new observer.
 final _resumeRouteObserver = ResumeRouteObserver();
