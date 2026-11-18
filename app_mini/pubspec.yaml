@@ -53,5 +53,11 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/icone.png"
+  image_path: "assets/icon/icon_square_1024.png"
+  adaptive_icon_background: "assets/icon/adaptive_background_1024.png"
+  adaptive_icon_foreground: "assets/icon/adaptive_foreground_1024.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/icon_rounded_1024.png"
+    icon_size: 256
   
