@@ -4,6 +4,7 @@ import 'package:mini/l10n/app_localizations.dart';
 
 import '../../models/item_category_model.dart';
 import '../../providers/catalog_provider.dart';
+import '/widgets/text_input_dialog.dart';
 
 /* Manages the PRODUCT categories of the active store: list, create, rename
 and delete. Only reachable from the Products screen (AppBar icon), so it
@@ -28,29 +29,15 @@ class _ItemCategoryScreenState extends State<ItemCategoryScreen> {
 
   Future<void> _showNameDialog({ItemCategoryModel? category}) async {
     final l10n = AppLocalizations.of(context)!;
-    final controller = TextEditingController(text: category?.name ?? '');
-    final name = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(category == null ? l10n.newCategory : l10n.renameCategory),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(labelText: l10n.categoryNameLabel),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(l10n.cancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: Text(l10n.saveLabel),
-          ),
-        ],
-      ),
+    final name = await showTextInputDialog(
+      context,
+      title: category == null ? l10n.newCategory : l10n.renameCategory,
+      label: l10n.categoryNameLabel,
+      initialText: category?.name ?? '',
+      confirmLabel: l10n.saveLabel,
+      cancelLabel: l10n.cancel,
+      emptyMessage: l10n.nameRequiredMessage,
     );
-    controller.dispose();
 
     if (name == null || !mounted) return;
     final provider = context.read<CatalogProvider>();

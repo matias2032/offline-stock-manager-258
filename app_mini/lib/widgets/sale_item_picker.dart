@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:mini/l10n/app_localizations.dart';
 
@@ -36,12 +35,12 @@ class SaleItemPickResult {
   bool get isCustom => sellable == null;
 }
 
-/* Bottom sheet to pick one item for a sale. Lists the active items of the
-store, with search. A sold-out product shows a red "Out of stock" tag and,
-when tapped, explains why it cannot be added. The first entry adds a custom
-("avulso") line. Closes itself if the active store changes. */
-Future<SaleItemPickResult?> showSaleItemPicker(BuildContext context) {
-  return showModalBottomSheet<SaleItemPickResult>(
+/* Bottom sheet to pick one product or service for a sale. Lists the active
+items of the store, with search. A sold-out product shows a red "Out of
+stock" tag and, when tapped, explains why it cannot be added. Returns the
+chosen item, or null. Closes itself if the active store changes. */
+Future<SellableItem?> showSaleItemPicker(BuildContext context) {
+  return showModalBottomSheet<SellableItem>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -89,14 +88,6 @@ class _SaleItemPickerSheetState extends State<_SaleItemPickerSheet> {
     }
   }
 
-  Future<void> _pickCustom() async {
-    final result = await showDialog<SaleItemPickResult>(
-      context: context,
-      builder: (_) => const _CustomItemDialog(),
-    );
-    if (result == null || !mounted) return;
-    Navigator.of(context).pop(result);
-  }
 
   Future<void> _onTapItem(SellableItem sellable) async {
     if (sellable.isOutOfStock) {
@@ -116,7 +107,7 @@ class _SaleItemPickerSheetState extends State<_SaleItemPickerSheet> {
       );
       return;
     }
-    Navigator.of(context).pop(SaleItemPickResult.catalog(sellable));
+    Navigator.of(context).pop(sellable);
   }
 
   @override
@@ -163,13 +154,6 @@ class _SaleItemPickerSheetState extends State<_SaleItemPickerSheet> {
                 onChanged: (value) =>
                     context.read<SaleProvider>().loadSellableItems(search: value),
               ),
-            ),
-            // Always available, even with an empty catalog.
-            ListTile(
-              leading: Icon(Icons.edit_note_outlined, color: colorScheme.primary),
-              title: Text(l10n.customItemOption),
-              subtitle: Text(l10n.customItemOptionHint),
-              onTap: _pickCustom,
             ),
             const Divider(height: 1),
             Expanded(
@@ -272,110 +256,6 @@ class _SaleItemPickerSheetState extends State<_SaleItemPickerSheet> {
           ],
         ),
       ),
-    );
-  }
-}
-
-/* Asks for the data of a custom line. Returns a SaleItemPickResult.custom.
-The subtotal must be > 0 (the repository rejects anything else, and the
-seller should never see that English message). */
-class _CustomItemDialog extends StatefulWidget {
-  const _CustomItemDialog();
-
-  @override
-  State<_CustomItemDialog> createState() => _CustomItemDialogState();
-}
-
-class _CustomItemDialogState extends State<_CustomItemDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _quantityController = TextEditingController(text: '1');
-  final _priceController = TextEditingController();
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _quantityController.dispose();
-    _priceController.dispose();
-    super.dispose();
-  }
-
-  void _confirm() {
-    if (!_formKey.currentState!.validate()) return;
-    Navigator.of(context).pop(
-      SaleItemPickResult.custom(
-        name: _nameController.text.trim(),
-        quantityMilli: QuantityUtils.parseToMilli(_quantityController.text),
-        priceCents: MoneyUtils.parseToCents(_priceController.text),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    final currency = context.read<UserProvider>().user?.currency ?? 'MZN';
-
-    return AlertDialog(
-      title: Text(l10n.customItemDialogTitle),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _nameController,
-                autofocus: true,
-                decoration: InputDecoration(labelText: l10n.customItemNameLabel),
-                validator: (value) => (value ?? '').trim().isEmpty
-                    ? l10n.customItemNameRequired
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _quantityController,
-                decoration: InputDecoration(labelText: l10n.quantityLabel),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                ],
-                validator: (value) =>
-                    (QuantityUtils.tryParseToMilli(value ?? '') ?? 0) <= 0
-                        ? l10n.enterValidQuantityMessage
-                        : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _priceController,
-                decoration:
-                    InputDecoration(labelText: '${l10n.unitPriceLabel} ($currency)'),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                validator: (value) {
-                  final cents = MoneyUtils.parseToCents(value ?? '');
-                  final quantity =
-                      QuantityUtils.parseToMilli(_quantityController.text);
-                  return QuantityUtils.lineSubtotalCents(quantity, cents) <= 0
-                      ? l10n.enterValidAmountMessage
-                      : null;
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(l10n.cancel),
-        ),
-        TextButton(
-          onPressed: _confirm,
-          child: Text(l10n.addItemButton),
-        ),
-      ],
     );
   }
 }

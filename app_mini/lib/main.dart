@@ -91,6 +91,7 @@ class MyApp extends StatelessWidget {
       itemCategoryDao,
       catalogItemDao,
       stockMovementDao,
+      expenseRepository,
     );
 
     final stockRepository = StockRepository(

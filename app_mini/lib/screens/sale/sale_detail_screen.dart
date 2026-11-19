@@ -10,7 +10,7 @@ import '../../providers/customer_provider.dart';
 import '../../providers/sale_provider.dart';
 import '../../providers/user_provider.dart';
 import '/widgets/sale_item_lines.dart';
-
+import '/widgets/text_input_dialog.dart';
 /* The single detail screen of a sale (NORMAL or CREDIT). Shows header,
 lines (if any), totals and payment history. The payment form and the cancel
 action appear only for a CREDIT sale that is still open.
@@ -123,42 +123,25 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
 
   Future<void> _confirmCancel() async {
     final l10n = AppLocalizations.of(context)!;
-    final reasonController = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.cancelSale),
-        content: TextField(
-          controller: reasonController,
-          decoration: InputDecoration(labelText: l10n.cancellationReasonLabel),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(l10n.back),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(l10n.cancelSaleButton),
-          ),
-        ],
-      ),
+    final reason = await showTextInputDialog(
+      context,
+      title: l10n.cancelSale,
+      label: l10n.cancellationReasonLabel,
+      confirmLabel: l10n.cancelSaleButton,
+      cancelLabel: l10n.back,
     );
+    if (reason == null || !mounted) return;
 
-    if (confirmed == true && mounted) {
-      final success = await context.read<SaleProvider>().cancelSale(
-            saleId: widget.saleId,
-            cancellationReason: reasonController.text,
-          );
-      if (!success && mounted) {
-        final error = context.read<SaleProvider>().errorMessage;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error ?? l10n.couldNotCancelSale)),
+    final success = await context.read<SaleProvider>().cancelSale(
+          saleId: widget.saleId,
+          cancellationReason: reason,
         );
-      }
+    if (!success && mounted) {
+      final error = context.read<SaleProvider>().errorMessage;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error ?? l10n.couldNotCancelSale)),
+      );
     }
-    reasonController.dispose();
   }
 
   @override

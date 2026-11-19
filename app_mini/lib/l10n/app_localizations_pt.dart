@@ -1385,7 +1385,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get initialQuantityHelperText =>
-      'Estoque que já tem. Não cria despesa. Para compras novas, crie o produto e use \"Movimentar estoque\".';
+      'Estoque que já tem. É registado como despesa (quantidade × custo). Para compras posteriores, use \"Movimentar estoque\".';
 
   @override
   String get serviceUnitHelperText => 'Ex.: hora, serviço';
@@ -1422,21 +1422,6 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get okLabel => 'OK';
-
-  @override
-  String get customItemOption => 'Item avulso';
-
-  @override
-  String get customItemOptionHint => 'Indique nome e preço (sem estoque)';
-
-  @override
-  String get customItemDialogTitle => 'Item avulso';
-
-  @override
-  String get customItemNameLabel => 'Nome do item';
-
-  @override
-  String get customItemNameRequired => 'Indique o nome do item';
 
   @override
   String get customItemTag => 'Avulso';

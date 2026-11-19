@@ -13,42 +13,27 @@ import '/widgets/app_sidebar.dart';
 import '/widgets/sale_item_picker.dart';
 import 'package:mini/l10n/app_localizations.dart';
 
-/* One line of the cart: a catalog item (sellable != null) or a custom line
-typed by the seller (customName != null, no stock). Holds its own controllers
-so quantity and price stay editable; the subtotal is derived.
+/* One line of the cart: a product or service of the catalog. Holds its own
+controllers so quantity and price stay editable; the subtotal is derived.
 
 [sellable] is a snapshot taken when the item was picked (or last refreshed):
 its balance may be out of date, the repository is the final authority.
 [unavailable] is set when a refresh finds the item is no longer sellable. */
 class _CartLine {
-  _CartLine.catalog(SellableItem this.sellable)
-      : customName = null,
-        quantityController = TextEditingController(text: '1'),
+  _CartLine(this.sellable)
+      : quantityController = TextEditingController(text: '1'),
         priceController = TextEditingController(
           text: MoneyUtils.toInputText(sellable.item.salePriceCents),
         );
 
-  _CartLine.custom({
-    required String name,
-    required int quantityMilli,
-    required int priceCents,
-  })  : sellable = null,
-        customName = name,
-        quantityController =
-            TextEditingController(text: QuantityUtils.toInputText(quantityMilli)),
-        priceController =
-            TextEditingController(text: MoneyUtils.toInputText(priceCents));
-
-  SellableItem? sellable;
-  final String? customName;
+  SellableItem sellable;
   bool unavailable = false;
   final TextEditingController quantityController;
   final TextEditingController priceController;
 
-  bool get isCustom => sellable == null;
-  int? get catalogItemId => sellable?.item.idCatalogItem;
-  String get name => customName ?? sellable!.item.name;
-  String get unit => sellable?.item.unit ?? 'UN';
+  int get catalogItemId => sellable.item.idCatalogItem!;
+  String get name => sellable.item.name;
+  String get unit => sellable.item.unit;
 
   int get quantityMilli => QuantityUtils.parseToMilli(quantityController.text);
   int get unitPriceCents => MoneyUtils.parseToCents(priceController.text);
@@ -60,7 +45,6 @@ class _CartLine {
     priceController.dispose();
   }
 }
-
 class SaleFormScreen extends StatefulWidget {
   const SaleFormScreen({super.key});
 
@@ -199,23 +183,11 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
     if (picked == null || !mounted) return;
 
     setState(() {
-      final sellable = picked.sellable;
-
-      // Custom line: always a new line.
-      if (sellable == null) {
-        _cart.add(_CartLine.custom(
-          name: picked.customName!,
-          quantityMilli: picked.customQuantityMilli!,
-          priceCents: picked.customPriceCents!,
-        ));
-        return;
-      }
-
-      // Picking the same catalog item again just adds one more unit (and
-      // refreshes the balance snapshot with the one just read).
+      // Picking the same item again just adds one more unit (and refreshes
+      // the balance snapshot with the one just read).
       for (final line in _cart) {
-        if (line.catalogItemId == sellable.item.idCatalogItem) {
-          line.sellable = sellable;
+        if (line.catalogItemId == picked.item.idCatalogItem) {
+          line.sellable = picked;
           line.unavailable = false;
           line.quantityController.text = QuantityUtils.format(
             line.quantityMilli + QuantityUtils.scale,
@@ -223,7 +195,7 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
           return;
         }
       }
-      _cart.add(_CartLine.catalog(sellable));
+      _cart.add(_CartLine(picked));
     });
   }
 
@@ -235,12 +207,12 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
   }
 
   /* Total requested per product (lines of the same product count together,
-  whatever their prices). Custom lines and services never use stock. */
+  whatever their prices). Services never use stock. */
   Map<int, int> get _requestedByProduct {
     final requested = <int, int>{};
     for (final line in _cart) {
-      final item = line.sellable?.item;
-      if (item == null || !item.isProduct) continue;
+      final item = line.sellable.item;
+      if (!item.isProduct) continue;
       final id = item.idCatalogItem!;
       requested[id] = (requested[id] ?? 0) + line.quantityMilli;
     }
@@ -250,7 +222,7 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
   /// The known balance when this line's product is requested above it, else null.
   int? _shortageBalance(_CartLine line, Map<int, int> requested) {
     final sellable = line.sellable;
-    if (sellable == null || !sellable.item.isProduct) return null;
+    if (!sellable.item.isProduct) return null;
     final balance = sellable.balanceMilli;
     if (balance == null) return null;
     final total = requested[sellable.item.idCatalogItem!] ?? 0;
@@ -269,9 +241,7 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
     };
     setState(() {
       for (final line in _cart) {
-        final id = line.catalogItemId;
-        if (id == null) continue;
-        final updated = fresh[id];
+        final updated = fresh[line.catalogItemId];
         if (updated == null) {
           line.unavailable = true;
         } else {
@@ -300,15 +270,8 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
   }
 
   SaleLineInput _toLineInput(_CartLine line) {
-    if (line.isCustom) {
-      return SaleLineInput.custom(
-        name: line.customName!,
-        quantityMilli: line.quantityMilli,
-        price: line.unitPriceCents,
-      );
-    }
     return SaleLineInput(
-      catalogItemId: line.catalogItemId!,
+      catalogItemId: line.catalogItemId,
       quantityMilli: line.quantityMilli,
       unitPriceCents: line.unitPriceCents,
     );
@@ -461,12 +424,11 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
           color: colorScheme.error,
         ),
       );
-    } else if (line.sellable != null &&
-        line.sellable!.item.isProduct &&
-        line.sellable!.balanceMilli != null) {
+    } else if (line.sellable.item.isProduct &&
+        line.sellable.balanceMilli != null) {
       status = Text(
         l10n.stockAvailableLabel(
-          QuantityUtils.format(line.sellable!.balanceMilli!),
+          QuantityUtils.format(line.sellable.balanceMilli!),
           line.unit,
         ),
         style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
@@ -483,33 +445,9 @@ class _SaleFormScreenState extends State<SaleFormScreen> {
             Row(
               children: [
                 Expanded(
-                  child: Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          line.name,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      if (line.isCustom) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: colorScheme.secondaryContainer,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            l10n.customItemTag,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colorScheme.onSecondaryContainer,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                  child: Text(
+                    line.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
                 IconButton(

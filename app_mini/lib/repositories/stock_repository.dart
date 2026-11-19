@@ -3,7 +3,8 @@ import 'package:sqflite/sqflite.dart';
 import '../core/database/local_database.dart';
 import '../core/insufficient_stock_exception.dart';
 import '../core/quantity_utils.dart';
-import '../daos/catalog_item_dao.dart';import '../daos/stock_movement_dao.dart';
+import '../daos/catalog_item_dao.dart';
+import '../daos/stock_movement_dao.dart';
 import '../daos/supplier_dao.dart';
 import '../models/catalog_item_model.dart';
 import '../models/stock_movement_model.dart';
@@ -13,9 +14,10 @@ import 'expense_repository.dart';
 the append-only stock_movement ledger. Movements are never edited or
 deleted; mistakes are fixed with a counter-movement.
 
-Only PURCHASE creates an expense (same transaction). INITIAL and
-adjustments do not: stock already on the shelf is not a new cash outflow,
-and booking it as an expense would distort the period balance.
+A PURCHASE creates its expense here (same transaction). The initial stock of
+a new product is booked as an expense too, but that happens in
+CatalogRepository.createItem, together with the product. Adjustments (exit,
+loss) never create an expense.
 
 Every write runs inside runInTransaction and reads the balance inside it. */
 class StockRepository {
@@ -144,8 +146,6 @@ class StockRepository {
     });
   }
 
-// (nothing: the method was removed; the initial stock only exists in the catalog,
-// in CatalogRepository.createItem)
 
   /* Manual correction. [quantity] is the positive magnitude; the sign comes
   from [movementType]. Outgoing types need a note and can never take the
@@ -225,7 +225,7 @@ class StockRepository {
     return item;
   }
 
-  /// Purchases and initial stock only go to live (active, not deleted) products.
+  /// Purchases only go to live (active, not deleted) products.
   void _requireReceivable(CatalogItemModel item) {
     if (item.deleted) {
       throw StateError('Cannot add stock to a deleted item.');

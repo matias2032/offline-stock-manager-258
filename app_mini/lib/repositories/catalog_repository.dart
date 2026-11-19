@@ -1,10 +1,12 @@
 import '../core/database/local_database.dart';
+import '../core/quantity_utils.dart';
 import '../daos/catalog_item_dao.dart';
 import '../daos/item_category_dao.dart';
 import '../daos/stock_movement_dao.dart';
 import '../models/catalog_item_model.dart';
 import '../models/item_category_model.dart';
 import '../models/stock_movement_model.dart';
+import 'expense_repository.dart';
 
 /* Business logic for the catalog: categories, products and services.
 Screens and providers must never talk to the DAOs directly.
@@ -14,8 +16,8 @@ Rules enforced here (and, where possible, by CHECKs in the schema):
  - a product needs a cost greater than zero (single cost, no optional one);
  - services have no cost, no stock and no category;
  - a category used by a product must belong to the same store;
- - a product is created with an optional initial quantity (INITIAL movement,
-   no expense, same transaction);
+ - a product is created with an optional initial quantity: an INITIAL
+   movement plus an expense of quantity x cost, same transaction as the item;
  - a product with stock cannot be deleted (zero it first with an adjustment);
  - deleting a category detaches its items instead of deleting them. */
 class CatalogRepository {
@@ -24,12 +26,14 @@ class CatalogRepository {
     this._categoryDao,
     this._itemDao,
     this._stockMovementDao,
+    this._expenseRepository,
   );
 
   final LocalDatabase _database;
   final ItemCategoryDao _categoryDao;
   final CatalogItemDao _itemDao;
   final StockMovementDao _stockMovementDao;
+  final ExpenseRepository _expenseRepository;
 
   // categories
 
@@ -121,9 +125,12 @@ class CatalogRepository {
     return _itemDao.getItemById(idCatalogItem);
   }
 
-  /* [initialQuantityMilli] (products only) is stock already on the shelf:
-  it creates an INITIAL movement at the product cost, with NO expense, in the
-  same transaction as the item. */
+  /* [initialQuantityMilli] (products only) is the stock the product starts
+  with. It is booked like a purchase: an INITIAL movement at the product cost
+  plus an expense of quantity x cost (protected, like any stock expense), all
+  in the same transaction as the item. [initialStockExpenseDescription]
+  arrives already localized from the UI (stored in the language active at the
+  time). */
   Future<CatalogItemModel> createItem({
     required int businessUnitId,
     required String itemType,
@@ -134,6 +141,7 @@ class CatalogRepository {
     required int salePriceCents,
     int costPriceCents = 0,
     int initialQuantityMilli = 0,
+    String? initialStockExpenseDescription,
   }) async {
     if (itemType != CatalogItemModel.typeProduct &&
         itemType != CatalogItemModel.typeService) {
@@ -165,6 +173,21 @@ class CatalogRepository {
     }
     await _assertCategoryUsable(categoryId, businessUnitId);
 
+    // The initial stock becomes an expense: it needs a total > 0 and a text.
+    var initialStockCents = 0;
+    if (isProduct && initialQuantityMilli > 0) {
+      initialStockCents = QuantityUtils.lineSubtotalCents(
+        initialQuantityMilli,
+        costPriceCents,
+      );
+      if (initialStockCents <= 0) {
+        throw ArgumentError('Initial stock total must be greater than zero.');
+      }
+      if (_cleanOrNull(initialStockExpenseDescription) == null) {
+        throw ArgumentError('Initial stock expense description is required.');
+      }
+    }
+
     final item = CatalogItemModel(
       businessUnitId: businessUnitId,
       itemType: itemType,
@@ -181,6 +204,13 @@ class CatalogRepository {
       final id = await _itemDao.insertItem(item, txn: txn);
 
       if (isProduct && initialQuantityMilli > 0) {
+        final expense = await _expenseRepository.createExpense(
+          businessUnitId: businessUnitId,
+          description: _cleanOrNull(initialStockExpenseDescription)!,
+          amountCents: initialStockCents,
+          expenseDate: item.createdAt,
+          txn: txn,
+        );
         await _stockMovementDao.insertMovement(
           StockMovementModel(
             businessUnitId: businessUnitId,
@@ -188,6 +218,7 @@ class CatalogRepository {
             movementType: StockMovementModel.typeInitial,
             quantityMilli: initialQuantityMilli,
             unitCostCents: costPriceCents,
+            expenseId: expense.idExpense,
             createdAt: DateTime.now(),
           ),
           txn: txn,

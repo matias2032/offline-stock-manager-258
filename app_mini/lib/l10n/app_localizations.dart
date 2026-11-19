@@ -2543,7 +2543,7 @@ abstract class AppLocalizations {
   /// No description provided for @initialQuantityHelperText.
   ///
   /// In en, this message translates to:
-  /// **'Stock you already have. No expense is created. For new purchases, create the product and then use \"Move stock\".'**
+  /// **'Stock you already have. It is recorded as an expense (quantity × cost). For later purchases, use \"Move stock\".'**
   String get initialQuantityHelperText;
 
   /// No description provided for @serviceUnitHelperText.
@@ -2611,36 +2611,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OK'**
   String get okLabel;
-
-  /// No description provided for @customItemOption.
-  ///
-  /// In en, this message translates to:
-  /// **'Custom item'**
-  String get customItemOption;
-
-  /// No description provided for @customItemOptionHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Type a name and a price (no stock)'**
-  String get customItemOptionHint;
-
-  /// No description provided for @customItemDialogTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Custom item'**
-  String get customItemDialogTitle;
-
-  /// No description provided for @customItemNameLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'Item name'**
-  String get customItemNameLabel;
-
-  /// No description provided for @customItemNameRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter the item name'**
-  String get customItemNameRequired;
 
   /// No description provided for @customItemTag.
   ///

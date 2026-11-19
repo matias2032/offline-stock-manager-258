@@ -14,7 +14,8 @@ import '/widgets/stock_movement_sheet.dart';
 
 /* Create/edit form for a PRODUCT. [row] is null when creating.
  - Create: name, category, price, cost (required), initial quantity (stock
-   already on hand: INITIAL movement, no expense) and description.
+   already on hand: INITIAL movement plus an expense of quantity x cost) and
+   description.
  - Edit: same fields without the initial quantity, plus the "Active" switch
    and the "Move stock" button. Stock never moves from this form's Save:
    one save never does two things at once. */
@@ -82,6 +83,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final l10n = AppLocalizations.of(context)!;
     final provider = context.read<CatalogProvider>();
     final salePrice = MoneyUtils.parseToCents(_salePriceController.text);
     final cost = MoneyUtils.parseToCents(_costController.text);
@@ -102,6 +104,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         await provider.setItemActive(item.idCatalogItem!, _active);
       }
     } else {
+      final initialMilli =
+          QuantityUtils.parseToMilli(_initialQuantityController.text);
       success = await provider.createItem(
         itemType: CatalogItemModel.typeProduct,
         name: _nameController.text,
@@ -110,8 +114,14 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         unit: _unitController.text,
         salePriceCents: salePrice,
         costPriceCents: cost,
-        initialQuantityMilli:
-            QuantityUtils.parseToMilli(_initialQuantityController.text),
+        initialQuantityMilli: initialMilli,
+        // Same text as a purchase; stored in the language active right now.
+        initialStockExpenseDescription: initialMilli > 0
+            ? l10n.stockPurchaseExpenseDescription(
+                QuantityUtils.format(initialMilli),
+                _nameController.text.trim(),
+              )
+            : null,
       );
     }
 
@@ -321,13 +331,22 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                 ],
-                // Empty (or 0) means "no stock yet": no movement is created.
+                // Empty (or 0) means "no stock yet": no movement or expense.
                 validator: (value) {
                   final text = (value ?? '').trim();
                   if (text.isEmpty) return null;
-                  return QuantityUtils.tryParseToMilli(text) == null
-                      ? l10n.enterValidQuantityMessage
-                      : null;
+                  final milli = QuantityUtils.tryParseToMilli(text);
+                  if (milli == null) return l10n.enterValidQuantityMessage;
+
+                  // It becomes an expense (quantity x cost): the total
+                  // cannot round to zero.
+                  final cost = MoneyUtils.parseToCents(_costController.text);
+                  if (milli > 0 &&
+                      cost > 0 &&
+                      QuantityUtils.lineSubtotalCents(milli, cost) <= 0) {
+                    return l10n.enterValidAmountMessage;
+                  }
+                  return null;
                 },
               ),
             ],

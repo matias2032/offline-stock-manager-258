@@ -1367,7 +1367,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get initialQuantityHelperText =>
-      'Stock you already have. No expense is created. For new purchases, create the product and then use \"Move stock\".';
+      'Stock you already have. It is recorded as an expense (quantity × cost). For later purchases, use \"Move stock\".';
 
   @override
   String get serviceUnitHelperText => 'e.g. hour, service';
@@ -1404,21 +1404,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get okLabel => 'OK';
-
-  @override
-  String get customItemOption => 'Custom item';
-
-  @override
-  String get customItemOptionHint => 'Type a name and a price (no stock)';
-
-  @override
-  String get customItemDialogTitle => 'Custom item';
-
-  @override
-  String get customItemNameLabel => 'Item name';
-
-  @override
-  String get customItemNameRequired => 'Enter the item name';
 
   @override
   String get customItemTag => 'Custom';
