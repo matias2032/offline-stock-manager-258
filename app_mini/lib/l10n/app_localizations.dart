@@ -2705,6 +2705,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The initial stock is already recorded as an expense. Choose a supplier to link it, or leave it empty.'**
   String get initialStockSupplierHelperText;
+
+  /// No description provided for @pressBackAgainToExit.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap Back again to exit'**
+  String get pressBackAgainToExit;
 }
 
 class _AppLocalizationsDelegate

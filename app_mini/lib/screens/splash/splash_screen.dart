@@ -16,9 +16,9 @@ import '../../core/license/license_service.dart';
 kills the process while it is in the background. */
 class ResumeState {
   /* Within this window after leaving the app, it resumes directly on the last
-  screen. After it, the user goes through login as usual. */
-  static const Duration resumeWindow = Duration(minutes: 5);
-
+  screen (even if the OS killed the process meanwhile). After it, the user
+  goes through login as usual. */
+  static const Duration resumeWindow = Duration(minutes: 30);
   static const _routeKey = 'resume_last_route';
   static const _pausedAtKey = 'resume_paused_at';
 
@@ -233,7 +233,17 @@ class _SplashScreenState extends State<SplashScreen>
       if (!mounted) return;
     }
 
-    Navigator.of(context).pushReplacementNamed(resumeRoute ?? '/login');
+    final navigator = Navigator.of(context);
+    if (resumeRoute == null) {
+      navigator.pushReplacementNamed('/login');
+    } else if (resumeRoute == '/dashboard') {
+      navigator.pushReplacementNamed('/dashboard');
+    } else {
+      /* The dashboard goes underneath the restored screen, so Back leads to
+      it instead of closing the app. */
+      navigator.pushReplacementNamed('/dashboard');
+      navigator.pushNamed(resumeRoute);
+    }
   }
 
   @override

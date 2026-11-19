@@ -11,6 +11,7 @@ Rules:
 
 // Infra, theme and localization
 export 'core/database/local_database.dart';
+export 'core/app_route_observer.dart';
 export 'theme/app_theme.dart';
 export 'package:mini/l10n/app_localizations.dart';
 

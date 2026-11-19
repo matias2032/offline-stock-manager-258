@@ -2,9 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:mini/l10n/app_localizations.dart';
+import '../../core/app_route_observer.dart';
 import '../../models/daily_revenue_point.dart';
 import '../../models/sale_model.dart';
 import '../../providers/business_unit_provider.dart';
@@ -24,7 +26,58 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with RouteAware {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  DateTime? _lastBackPress;
+
+  /* The dashboard sits underneath the other screens: reload it whenever it
+  becomes visible again (Back from a screen opened above it). */
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) appRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void dispose() {
+    appRouteObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    _refresh();
+  }
+
+  /* Back on the start destination: an open drawer closes first; otherwise
+  the app closes only on a second tap within 2 seconds. */
+  void _onBack(bool didPop, AppLocalizations l10n) {
+    if (didPop) return;
+
+    final scaffold = _scaffoldKey.currentState;
+    if (scaffold != null && scaffold.isDrawerOpen) {
+      scaffold.closeDrawer();
+      return;
+    }
+
+    final now = DateTime.now();
+    final last = _lastBackPress;
+    if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+      SystemNavigator.pop();
+      return;
+    }
+    _lastBackPress = now;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(l10n.pressBackAgainToExit),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -62,7 +115,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final showStockCard =
         !isAllStores && stockReport != null && !stockReport.isEmpty;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) => _onBack(didPop, l10n),
+      child: Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
         title: Text(l10n.dashboardTitle),
         actions: const [StoreSelector(), SizedBox(width: 8)],
@@ -192,8 +249,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     isThreeLine: true,
                     trailing: const Icon(Icons.chevron_right),
                     // The low-stock list lives in Stock (it is no longer a report).
-                    onTap: () =>
-                        Navigator.of(context).pushReplacementNamed('/stock'),
+                    onTap: () => Navigator.of(context).pushNamed('/stock'),
                   ),
                 ),
               ],
@@ -207,13 +263,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       l10n.saleCountLabel(saleProvider.outstandingCreditCount),
                     ),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).pushReplacementNamed('/credit-sale'),
+                    onTap: () => Navigator.of(context).pushNamed('/credit-sale'),
                   ),
                 ),
               ],
             ],
           ),
         ),
+      ),
       ),
     );
   }

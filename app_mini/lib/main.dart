@@ -194,7 +194,7 @@ ChangeNotifierProvider(create: (_) => UserProvider(userRepository)),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: localeProvider.locale,
-          navigatorObservers: [_resumeRouteObserver],
+          navigatorObservers: [_resumeRouteObserver, appRouteObserver],
           routes: {
             '/activate': (_) => const ActivationScreen(),
             '/welcome': (_) => const WelcomeScreen(),

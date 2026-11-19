@@ -207,8 +207,20 @@ class _AppSidebarState extends State<AppSidebar>
     }
 
     if (!mounted) return;
-    Navigator.pop(context);
-    Navigator.of(context).pushReplacementNamed(route);
+    final navigator = Navigator.of(context);
+    navigator.pop(); // close the drawer
+
+    /* The dashboard is the start destination. Any other destination of the
+    drawer opens right above it, replacing whichever destination was open, so
+    Back leads to the dashboard (and from the dashboard the app closes). */
+    if (route == '/dashboard') {
+      navigator.pushNamedAndRemoveUntil(route, (_) => false);
+    } else {
+      navigator.pushNamedAndRemoveUntil(
+        route,
+        (r) => r.settings.name == '/dashboard',
+      );
+    }
   }
 
   void _openStandaloneScreen(String route) {

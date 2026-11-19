@@ -1486,4 +1486,7 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get initialStockSupplierHelperText =>
       'O estoque inicial já é registado como despesa. Escolha um fornecedor para a associar, ou deixe em branco.';
+
+  @override
+  String get pressBackAgainToExit => 'Toque em Voltar novamente para sair';
 }

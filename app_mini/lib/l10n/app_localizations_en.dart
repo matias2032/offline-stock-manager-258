@@ -1468,4 +1468,7 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get initialStockSupplierHelperText =>
       'The initial stock is already recorded as an expense. Choose a supplier to link it, or leave it empty.';
+
+  @override
+  String get pressBackAgainToExit => 'Tap Back again to exit';
 }
