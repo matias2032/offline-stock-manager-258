@@ -9,6 +9,7 @@ import '../../models/catalog_item_model.dart';
 import '../../models/stock_movement_model.dart';
 import '../../providers/catalog_provider.dart';
 import '../../providers/stock_provider.dart';
+import '../../providers/supplier_provider.dart';
 import '../../providers/user_provider.dart';
 import '/widgets/stock_movement_sheet.dart';
 
@@ -38,6 +39,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   final _initialQuantityController = TextEditingController();
 
   int? _categoryId;
+  int? _supplierId; // only for the expense of the initial stock
   bool _active = true;
 
   bool get _isEditing => widget.row != null;
@@ -66,6 +68,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       final provider = context.read<CatalogProvider>();
       provider.clearError();
       if (provider.categories.isEmpty) provider.loadCatalog(keepFilters: true);
+      if (!_isEditing) context.read<SupplierProvider>().loadSuppliers();
     });
   }
 
@@ -122,6 +125,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 _nameController.text.trim(),
               )
             : null,
+        // Without initial stock there is no expense, so no supplier either.
+        initialStockSupplierId: initialMilli > 0 ? _supplierId : null,
       );
     }
 
@@ -195,6 +200,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     final l10n = AppLocalizations.of(context)!;
     final provider = context.watch<CatalogProvider>();
     final stock = context.watch<StockProvider>();
+    final suppliers = context.watch<SupplierProvider>().suppliers;
     final currency = context.watch<UserProvider>().user?.currency ?? 'MZN';
     final colorScheme = Theme.of(context).colorScheme;
     final categories = provider.categories;
@@ -331,6 +337,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                 ],
+                // Shows or hides the supplier selector below.
+                onChanged: (_) => setState(() {}),
                 // Empty (or 0) means "no stock yet": no movement or expense.
                 validator: (value) {
                   final text = (value ?? '').trim();
@@ -349,6 +357,37 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   return null;
                 },
               ),
+              // The expense of the initial stock is created with the product;
+              // here it can optionally be linked to a supplier.
+              if (QuantityUtils.parseToMilli(_initialQuantityController.text) >
+                  0) ...[
+                const SizedBox(height: 16),
+                DropdownButtonFormField<int?>(
+                  key: ValueKey('supplier-${suppliers.length}'),
+                  initialValue:
+                      suppliers.any((s) => s.idSupplier == _supplierId)
+                          ? _supplierId
+                          : null,
+                  decoration: InputDecoration(
+                    labelText: l10n.supplierOptionalLabel,
+                    helperText: l10n.initialStockSupplierHelperText,
+                    helperMaxLines: 3,
+                  ),
+                  items: [
+                    DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text(l10n.noneLabel),
+                    ),
+                    ...suppliers.map(
+                      (s) => DropdownMenuItem<int?>(
+                        value: s.idSupplier,
+                        child: Text(s.name),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() => _supplierId = value),
+                ),
+              ],
             ],
             const SizedBox(height: 16),
             TextFormField(

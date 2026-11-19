@@ -3,6 +3,7 @@ import '../core/quantity_utils.dart';
 import '../daos/catalog_item_dao.dart';
 import '../daos/item_category_dao.dart';
 import '../daos/stock_movement_dao.dart';
+import '../daos/supplier_dao.dart';
 import '../models/catalog_item_model.dart';
 import '../models/item_category_model.dart';
 import '../models/stock_movement_model.dart';
@@ -27,6 +28,7 @@ class CatalogRepository {
     this._itemDao,
     this._stockMovementDao,
     this._expenseRepository,
+    this._supplierDao,
   );
 
   final LocalDatabase _database;
@@ -34,6 +36,7 @@ class CatalogRepository {
   final CatalogItemDao _itemDao;
   final StockMovementDao _stockMovementDao;
   final ExpenseRepository _expenseRepository;
+  final SupplierDao _supplierDao;
 
   // categories
 
@@ -130,7 +133,8 @@ class CatalogRepository {
   plus an expense of quantity x cost (protected, like any stock expense), all
   in the same transaction as the item. [initialStockExpenseDescription]
   arrives already localized from the UI (stored in the language active at the
-  time). */
+  time). [initialStockSupplierId] optionally links that expense to a supplier
+  of the same store; it is ignored when there is no initial stock. */
   Future<CatalogItemModel> createItem({
     required int businessUnitId,
     required String itemType,
@@ -142,6 +146,7 @@ class CatalogRepository {
     int costPriceCents = 0,
     int initialQuantityMilli = 0,
     String? initialStockExpenseDescription,
+    int? initialStockSupplierId,
   }) async {
     if (itemType != CatalogItemModel.typeProduct &&
         itemType != CatalogItemModel.typeService) {
@@ -201,11 +206,28 @@ class CatalogRepository {
     );
 
     return _database.runInTransaction((txn) async {
+      // Same rule as a purchase: the supplier must be live and from this store.
+      final supplierId = (isProduct && initialQuantityMilli > 0)
+          ? initialStockSupplierId
+          : null;
+      if (supplierId != null) {
+        final supplier = await _supplierDao.getSupplierById(
+          supplierId,
+          txn: txn,
+        );
+        if (supplier == null ||
+            supplier.deleted ||
+            supplier.businessUnitId != businessUnitId) {
+          throw StateError('Supplier not found in the active store.');
+        }
+      }
+
       final id = await _itemDao.insertItem(item, txn: txn);
 
       if (isProduct && initialQuantityMilli > 0) {
         final expense = await _expenseRepository.createExpense(
           businessUnitId: businessUnitId,
+          supplierId: supplierId,
           description: _cleanOrNull(initialStockExpenseDescription)!,
           amountCents: initialStockCents,
           expenseDate: item.createdAt,

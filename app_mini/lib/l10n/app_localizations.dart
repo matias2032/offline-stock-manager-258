@@ -2699,6 +2699,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 line sold} other{{count} lines sold}} without cost. Not included in the margin above.'**
   String customItemsSalesNote(int count);
+
+  /// No description provided for @initialStockSupplierHelperText.
+  ///
+  /// In en, this message translates to:
+  /// **'The initial stock is already recorded as an expense. Choose a supplier to link it, or leave it empty.'**
+  String get initialStockSupplierHelperText;
 }
 
 class _AppLocalizationsDelegate

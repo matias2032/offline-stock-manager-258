@@ -143,9 +143,9 @@ class CatalogProvider extends ChangeNotifier {
     int? categoryId,
     String unit = 'UN',
     required int salePriceCents,
-    int costPriceCents = 0,
-    int initialQuantityMilli = 0,
+    int costPriceCents = 0,    int initialQuantityMilli = 0,
     String? initialStockExpenseDescription,
+    int? initialStockSupplierId,
   }) =>
       _mutate(
         (unitId) => _repository.createItem(
@@ -159,6 +159,7 @@ class CatalogProvider extends ChangeNotifier {
           costPriceCents: costPriceCents,
           initialQuantityMilli: initialQuantityMilli,
           initialStockExpenseDescription: initialStockExpenseDescription,
+          initialStockSupplierId: initialStockSupplierId,
         ),
       );
 

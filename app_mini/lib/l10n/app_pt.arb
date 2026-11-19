@@ -451,5 +451,6 @@
   "lossesTotalLabel": "Valor das perdas",
   "noLossesInPeriod": "Sem perdas neste período.",
   "customItemsSalesTitle": "Itens avulsos",
-  "customItemsSalesNote": "{count, plural, =1{1 linha vendida} other{{count} linhas vendidas}} sem custo. Não entram na margem acima."
+  "customItemsSalesNote": "{count, plural, =1{1 linha vendida} other{{count} linhas vendidas}} sem custo. Não entram na margem acima.",
+    "initialStockSupplierHelperText": "O estoque inicial já é registado como despesa. Escolha um fornecedor para a associar, ou deixe em branco."
 }

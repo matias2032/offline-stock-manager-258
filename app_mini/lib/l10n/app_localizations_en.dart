@@ -1464,4 +1464,8 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0 without cost. Not included in the margin above.';
   }
+
+  @override
+  String get initialStockSupplierHelperText =>
+      'The initial stock is already recorded as an expense. Choose a supplier to link it, or leave it empty.';
 }

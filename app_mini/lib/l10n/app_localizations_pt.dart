@@ -1482,4 +1482,8 @@ class AppLocalizationsPt extends AppLocalizations {
     );
     return '$_temp0 sem custo. Não entram na margem acima.';
   }
+
+  @override
+  String get initialStockSupplierHelperText =>
+      'O estoque inicial já é registado como despesa. Escolha um fornecedor para a associar, ou deixe em branco.';
 }
